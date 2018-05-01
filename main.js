@@ -2,7 +2,7 @@ const HexagonConstants = {
   cursorY: 0.05,
   cursorW: 0.1,
   cursorH: 0.015,
-  godMode: true,
+  godMode: false,
   targetTickTime: Math.round(1 / 60 * 1000)
 };
 
@@ -327,10 +327,28 @@ class HexagonControls {
   }
 }
 
-function GenerateSpirals(state) {
-  return 0;
+function GenerateSpirals(state, { obstacleHeight = 0.05, obstacleDist = 0.03, numLines = 10, initialY = 1.0, reverse = false } = {}) {
+  const activeSlots = state.getActiveSlotIndices();
+  if (activeSlots.length % 3 !== 0) {
+    return -1;
+  }
+  let y = initialY;
+  const r = reverse ? -1 : 1;
+  for (let line = 0; line < numLines; line++) {
+    for (let i = 0; i < activeSlots.length; i += 3) {
+      state.slots[activeSlots[(i + line * r + numLines) % activeSlots.length]].obstacles.push(new HexagonObstacle(y, obstacleHeight));
+    }
+    y += obstacleDist;
+  }
+  y -= obstacleDist;
+  const duration = y / state.obstacleSpeed * HexagonConstants.targetTickTime;
+  return duration;
 }
-function GenerateCheckerBoard(state, { obstacleHeight = 0.05, lineDist = 0.3, numLines = 5, initialY = 0.0 } = {}) {
+function GenerateReverseSpirals(state, options) {
+  options.reverse = !options.reverse;
+  return GenerateSpirals(state, options);
+}
+function GenerateCheckerBoard(state, { obstacleHeight = 0.05, lineDist = 0.15, numLines = 5, initialY = 1.0 } = {}) {
   let y = initialY;
   for (let line = 0; line < numLines; line++) {
     for (let s = 0; s < state.slots.length; s++) {
@@ -347,20 +365,19 @@ function GenerateCheckerBoard(state, { obstacleHeight = 0.05, lineDist = 0.3, nu
 
 class HexagonLevel1 {
   constructor() {
-    this.slotColor1 = [0, 0, 0];
+    this.slotColor1 = [0.9, 0.9, 0.9];
     this.slotColor2 = [1, 1, 1];
     this.colorInterpolationDuration = 1000;
     this.timeSinceCIStart = 0;
 
-    const cursorColor1 = [1, 0, 0];
-    const cursorColor2 = [0.5, 0, 0];
+    const cursorColor1 = [0.5, 0.5, 0.5];
+    const cursorColor2 = [0.5, 0.5, 0.5];
     const obstacleColor = [0.5, 0.5, 0.5];
     const slotColors = [this.slotColor1.slice(0), this.slotColor2.slice(0)];
     const renderConfig = new HexagonRenderConfig(cursorColor1, cursorColor2, obstacleColor, slotColors);
     this.state = new HexagonState(renderConfig);
 
-    this.obstacleGens = [GenerateSpirals, GenerateCheckerBoard];
-    this.isFirstObstacle = true;
+    this.obstacleGens = [GenerateSpirals, GenerateReverseSpirals, GenerateCheckerBoard];
     this.currentGenDuration = 0;
     this.timeSinceGen = 0;
     this.timeBetweenObstacles = 0;
@@ -403,13 +420,11 @@ class HexagonLevel1 {
     // create new obstacles if necessary
     this.timeSinceGen += delta;
     if (this.timeSinceGen >= this.currentGenDuration + this.timeBetweenObstacles) {
-      const gen = this.obstacleGens[Math.floor(Math.random() * this.obstacleGens.length)];
       let opts = {};
-      if (this.isFirstObstacle) {
-        this.isFirstObstacle = false;
-        opts = { initialY: 1.0 };
-      }
-      this.currentGenDuration = gen(state, opts);
+      do {
+        const gen = this.obstacleGens[Math.floor(Math.random() * this.obstacleGens.length)];
+        this.currentGenDuration = gen(state, opts);
+      } while(this.currentGenDuration < 0);
       this.timeSinceGen = 0;
     }
 
@@ -439,8 +454,6 @@ class HexagonGame {
     this.prevTime = performance.now();
     this.boundTickCb = (...args) => this.tick(...args);
     window.requestAnimationFrame(this.boundTickCb);
-
-    // this.state.slots[0].obstacles.push(new HexagonObstacle(1.0, 0.01));
   }
   tick(time) {
     const { state } = this;
@@ -453,6 +466,8 @@ class HexagonGame {
     this.controls.tick(delta);
     // apply potential rendering and game behavior changes
     this.level.tick(delta);
+    // render new frame
+    this.renderer.render(delta);
     // check if we're dead
     if (!HexagonConstants.godMode) {
       const currentSlot = state.slots[state.getCurrentSlotIdx()];
@@ -465,8 +480,6 @@ class HexagonGame {
         }
       }
     }
-    
-    this.renderer.render(delta);
     window.requestAnimationFrame(this.boundTickCb);
   }
 
