@@ -27,6 +27,7 @@ class HexagonRenderConfig {
     this.cursorColor2 = cursorColor2;
     this.obstacleColor = obstacleColor;
     this.slotColors = slotColors;
+    this.rotation = 0;
   }
 }
 
@@ -95,6 +96,8 @@ class HexagonRenderer {
     const vertexLoc = gl.getAttribLocation(program, 'vertex');
     const aspectLoc = gl.getUniformLocation(program, 'aspect');
     gl.uniform1f(aspectLoc, gl.canvas.width / gl.canvas.height);
+    const rotationLoc = gl.getUniformLocation(program, 'rotation');
+    gl.uniform1f(rotationLoc, config.rotation);
     const colorLoc = gl.getUniformLocation(program, 'color');
     
     // render slots
@@ -169,12 +172,13 @@ class HexagonRenderer {
       precision mediump float;
       attribute vec4 vertex;
       uniform float aspect;
+      uniform float rotation;
 
       float PI = 3.14159265359;
 
       void main() {
         float r = 1. / cos(PI / 3.);
-        float alpha = (vertex.x - 1. / 12.) * 2. * PI;
+        float alpha = fract(vertex.x - 1. / 12. + 1. + rotation) * 2. * PI;
         vec4 pos;
         pos.x = sin(alpha) * r;
         pos.y = cos(alpha) * r * aspect;
@@ -350,6 +354,9 @@ class HexagonLevel1 {
     this.currentGenDuration = 0;
     this.timeSinceGen = 0;
     this.timeBetweenObstacles = 0;
+
+    this.fullRotationTime = 3000;
+    this.timeSinceRotationStart = 0;
   }
   tick(delta) {
     const { state } = this;
@@ -394,6 +401,14 @@ class HexagonLevel1 {
       }
       this.currentGenDuration = gen(state, opts);
       this.timeSinceGen = 0;
+    }
+
+    // interpolate rotation
+    this.timeSinceRotationStart += delta;
+    if (this.timeSinceRotationStart >= this.fullRotationTime) {
+      this.timeSinceRotationStart = 0;
+    } else {
+      state.renderConfig.rotation = this.timeSinceRotationStart / this.fullRotationTime;
     }
   }
   getState() {
