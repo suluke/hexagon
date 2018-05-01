@@ -74,6 +74,17 @@ class HexagonRenderer {
     this.program = this.createProgram();
     this.vertexBuffer = gl.createBuffer();
 
+    window.addEventListener('resize', (event) => {
+      const W  = gl.canvas.clientWidth;
+      const H = gl.canvas.clientHeight;
+      if (gl.canvas.width  !== W ||
+          gl.canvas.height !== H) {
+        gl.canvas.width  = W;
+        gl.canvas.height = H;
+        gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+      }
+    });
+
     gl.useProgram(this.program);
   }
 
