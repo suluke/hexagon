@@ -22,11 +22,11 @@ class HexagonSlot {
 }
 
 class HexagonRenderConfig {
-  constructor(cursorColor1, cursorColor2, obstacleColor, slotColors) {
-    this.cursorColor1 = cursorColor1;
-    this.cursorColor2 = cursorColor2;
-    this.obstacleColor = obstacleColor;
-    this.slotColors = slotColors;
+  constructor() {
+    this.cursorColor1 = null;
+    this.cursorColor2 = null;
+    this.obstacleColor = null;
+    this.slotColors = null;
     this.rotation = 0;
     this.zoom = 1;
   }
@@ -34,6 +34,7 @@ class HexagonRenderConfig {
 
 class HexagonState {
   constructor(renderConfig) {
+    this.running = true;
     this.position = 1 / 12;
     this.obstacleSpeed = 0.005;
     this.slots = new Array(6).fill(1).map(i => new HexagonSlot());
@@ -234,9 +235,10 @@ class HexagonRenderer {
 
 /// All things input
 class HexagonControls {
-  constructor(gamestate, canvas) {
+  constructor(game, gamestate, canvas) {
     canvas.tabIndex = 1000;
     canvas.focus();
+    this.game = game;
     this.gamestate = gamestate;
     this.keysDown = new Set();
     this.touchLeft = false;
@@ -285,6 +287,11 @@ class HexagonControls {
   }
   tick(delta) {
     const { gamestate, keysDown } = this;
+    if (!gamestate.running) {
+      if (keysDown.has('Space') || this.touchLeft || this.touchRight)
+        this.game.restart();
+      return;
+    }
     const effect = delta / HexagonConstants.targetTickTime;
     const left = keysDown.has('ArrowLeft') || this.touchLeft;
     const right = keysDown.has('ArrowRight') || this.touchRight;
@@ -363,25 +370,31 @@ function GenerateCheckerBoard(state, { obstacleHeight = 0.05, lineDist = 0.15, n
 
 class HexagonLevel1 {
   constructor() {
+    const renderConfig = new HexagonRenderConfig();
+    this.state = new HexagonState(renderConfig);
+    this.reset();
+
+    this.obstacleGens = [GenerateSpirals, GenerateReverseSpirals, GenerateCheckerBoard];
+    this.timeBetweenObstacles = 0;
+    this.fullRotationTime = 3000;
+  }
+  reset() {
     this.slotColor1 = [0.9, 0.9, 0.9];
     this.slotColor2 = [1, 1, 1];
     this.colorInterpolationDuration = 1000;
     this.timeSinceCIStart = 0;
+    this.currentGenDuration = 0;
+    this.timeSinceGen = 0;
+    this.timeSinceRotationStart = 0;
 
     const cursorColor1 = [0.5, 0.5, 0.5];
     const cursorColor2 = [0.5, 0.5, 0.5];
     const obstacleColor = [0.5, 0.5, 0.5];
     const slotColors = [this.slotColor1.slice(0), this.slotColor2.slice(0)];
-    const renderConfig = new HexagonRenderConfig(cursorColor1, cursorColor2, obstacleColor, slotColors);
-    this.state = new HexagonState(renderConfig);
-
-    this.obstacleGens = [GenerateSpirals, GenerateReverseSpirals, GenerateCheckerBoard];
-    this.currentGenDuration = 0;
-    this.timeSinceGen = 0;
-    this.timeBetweenObstacles = 0;
-
-    this.fullRotationTime = 3000;
-    this.timeSinceRotationStart = 0;
+    this.state.renderConfig.cursorColor1 = cursorColor1;
+    this.state.renderConfig.cursorColor2 = cursorColor2;
+    this.state.renderConfig.obstacleColor = obstacleColor;
+    this.state.renderConfig.slotColors = slotColors;
   }
   tick(delta) {
     const { state } = this;
@@ -401,29 +414,31 @@ class HexagonLevel1 {
     }
 
     // update obstacles
-    const effect = delta / HexagonConstants.targetTickTime;
-    for (let s = 0; s < state.slots.length; s++) {
-      const slot = state.slots[s];
-      for (let o = 0; o < slot.obstacles.length; o++) {
-        const obstacle = slot.obstacles[o];
-        obstacle.distance -= state.obstacleSpeed * effect;
-        // dispose of dead obstacles
-        if (obstacle.distance + obstacle.height < 0) {
-          slot.obstacles.splice(o, 1);
-          o--;
+    if (state.running) {
+      const effect = delta / HexagonConstants.targetTickTime;
+      for (let s = 0; s < state.slots.length; s++) {
+        const slot = state.slots[s];
+        for (let o = 0; o < slot.obstacles.length; o++) {
+          const obstacle = slot.obstacles[o];
+          obstacle.distance -= state.obstacleSpeed * effect;
+          // dispose of dead obstacles
+          if (obstacle.distance + obstacle.height < 0) {
+            slot.obstacles.splice(o, 1);
+            o--;
+          }
         }
       }
-    }
 
-    // create new obstacles if necessary
-    this.timeSinceGen += delta;
-    if (this.timeSinceGen >= this.currentGenDuration + this.timeBetweenObstacles) {
-      let opts = {};
-      do {
-        const gen = this.obstacleGens[Math.floor(Math.random() * this.obstacleGens.length)];
-        this.currentGenDuration = gen(state, opts);
-      } while(this.currentGenDuration < 0);
-      this.timeSinceGen = 0;
+      // create new obstacles if necessary
+      this.timeSinceGen += delta;
+      if (this.timeSinceGen >= this.currentGenDuration + this.timeBetweenObstacles) {
+        let opts = {};
+        do {
+          const gen = this.obstacleGens[Math.floor(Math.random() * this.obstacleGens.length)];
+          this.currentGenDuration = gen(state, opts);
+        } while(this.currentGenDuration < 0);
+        this.timeSinceGen = 0;
+      }
     }
 
     // interpolate rotation
@@ -445,7 +460,7 @@ class HexagonGame {
     this.level = new HexagonLevel1();
     this.state = this.level.getState();
     this.renderer = new HexagonRenderer(canvas, this.state);
-    this.controls = new HexagonControls(this.state, canvas);
+    this.controls = new HexagonControls(this, this.state, canvas);
     this.timeSinceLastObstacle = 0;
     this.frameTime = 0;
     this.playTime = 0;
@@ -453,6 +468,16 @@ class HexagonGame {
     this.prevTime = performance.now();
     this.boundTickCb = (...args) => this.tick(...args);
     window.requestAnimationFrame(this.boundTickCb);
+  }
+  restart() {
+    this.playTime = 0;
+    this.timeSinceLastObstacle = 0;
+    for (let s = 0; s < this.state.slots.length; s++) {
+      const slot = this.state.slots[s];
+      slot.obstacles.length = 0;
+    }
+    this.level.reset();
+    this.state.running = true;
   }
   tick(time) {
     const { state } = this;
@@ -467,19 +492,20 @@ class HexagonGame {
     this.level.tick(delta);
     // render new frame
     this.renderer.render(delta);
-    // check if we're dead
-    if (!HexagonConstants.godMode) {
-      const currentSlot = state.slots[state.getCurrentSlotIdx()];
-      const { cursorY } = HexagonConstants;
-      for (let o = 0; o < currentSlot.obstacles.length; o++) {
-        const obstacle = currentSlot.obstacles[o];
-        if (obstacle.distance <= cursorY && obstacle.distance + obstacle.height > cursorY) {
-          alert('Dead');
-          return;
+    if (state.running) {
+      // check if we're dead
+      if (!HexagonConstants.godMode) {
+        const currentSlot = state.slots[state.getCurrentSlotIdx()];
+        const { cursorY } = HexagonConstants;
+        for (let o = 0; o < currentSlot.obstacles.length; o++) {
+          const obstacle = currentSlot.obstacles[o];
+          if (obstacle.distance <= cursorY && obstacle.distance + obstacle.height > cursorY) {
+            state.running = false;
+          }
         }
       }
+      this.playTime += delta;
     }
-    this.playTime += delta;
     window.requestAnimationFrame(this.boundTickCb);
   }
 
