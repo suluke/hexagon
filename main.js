@@ -2,7 +2,7 @@ const HexagonConstants = {
   cursorY: 0.05,
   cursorW: 0.1,
   cursorH: 0.015,
-  godMode: false,
+  godMode: true,
   targetTickTime: Math.round(1 / 60 * 1000)
 };
 
@@ -28,6 +28,7 @@ class HexagonRenderConfig {
     this.obstacleColor = obstacleColor;
     this.slotColors = slotColors;
     this.rotation = 0;
+    this.zoom = 1;
   }
 }
 
@@ -66,14 +67,20 @@ class HexagonState {
 
 /// All things graphics
 class HexagonRenderer {
-  constructor(gl, gamestate) {
+  constructor(canvas, gamestate) {
+    canvas.width = canvas.clientWidth;
+    canvas.height = canvas.clientHeight;
+    const gl = canvas.getContext('webgl', { alpha: false, antialias: true, depth: false });
+    if (!gl) {
+      throw new Error('WebGL not working');
+    }
     this.gl = gl;
     this.gamestate = gamestate;
     this.config = gamestate.renderConfig;
-
     this.program = this.createProgram();
     this.vertexBuffer = gl.createBuffer();
-
+    this.zoom = gl.canvas.height > gl.canvas.width ? gl.canvas.height / gl.canvas.width : 1;
+    console.log(this.zoom);
     window.addEventListener('resize', (event) => {
       const W  = gl.canvas.clientWidth;
       const H = gl.canvas.clientHeight;
@@ -82,6 +89,8 @@ class HexagonRenderer {
         gl.canvas.width  = W;
         gl.canvas.height = H;
         gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+        this.zoom = gl.canvas.height > gl.canvas.width ? gl.canvas.height / gl.canvas.width : 1
+        console.log(this.zoom);
       }
     });
 
@@ -93,19 +102,21 @@ class HexagonRenderer {
     gl.clearColor(0.0, 0.0, 0.0, 1.0);
     gl.clear(gl.COLOR_BUFFER_BIT);
 
-    const vertexLoc = gl.getAttribLocation(program, 'vertex');
     const aspectLoc = gl.getUniformLocation(program, 'aspect');
     gl.uniform1f(aspectLoc, gl.canvas.width / gl.canvas.height);
     const rotationLoc = gl.getUniformLocation(program, 'rotation');
     gl.uniform1f(rotationLoc, config.rotation);
-    const colorLoc = gl.getUniformLocation(program, 'color');
+    const zoomLoc = gl.getUniformLocation(program, 'zoom');
+    gl.uniform1f(zoomLoc, this.zoom * config.zoom);
     
     // render slots
     this.updateVertexBuffer();
     // gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer); // not needed
+    const vertexLoc = gl.getAttribLocation(program, 'vertex');
     gl.vertexAttribPointer(vertexLoc, 2, gl.FLOAT, false, 0, 0);
     gl.enableVertexAttribArray(vertexLoc);
 
+    const colorLoc = gl.getUniformLocation(program, 'color');
     let offset = 3;
     for (let i = 0; i < gamestate.slots.length; i++) {
       gl.uniform3f(colorLoc, ...config.slotColors[i % config.slotColors.length]);
@@ -173,6 +184,7 @@ class HexagonRenderer {
       attribute vec4 vertex;
       uniform float aspect;
       uniform float rotation;
+      uniform float zoom;
 
       float PI = 3.14159265359;
 
@@ -182,11 +194,9 @@ class HexagonRenderer {
         vec4 pos;
         pos.x = sin(alpha) * r;
         pos.y = cos(alpha) * r * aspect;
-        pos = pos * vertex.y;
+        pos = pos * vertex.y * zoom;
         pos.z = vertex.z;
         pos.a = vertex.a;
-        //vec4 rotO = vec4(1. / 12., -r, 0., 0.);
-        //pos = pos - rotO;
         gl_Position = pos / 2.0;
       }
     `;
@@ -419,15 +429,9 @@ class HexagonLevel1 {
 // Wire up the model, graphics, input (, sound?)
 class HexagonGame {
   constructor(canvas) {
-    canvas.width = canvas.offsetWidth;
-    canvas.height = canvas.offsetHeight;
-    const ctx = canvas.getContext('webgl', { alpha: false, antialias: true, depth: false });
-    if (!ctx) {
-      throw new Error('WebGL not working');
-    }
     this.level = new HexagonLevel1();
     this.state = this.level.getState();
-    this.renderer = new HexagonRenderer(ctx, this.state);
+    this.renderer = new HexagonRenderer(canvas, this.state);
     this.controls = new HexagonControls(this.state, canvas);
     this.timeSinceLastObstacle = 0;
     this.frameTime = 0;
