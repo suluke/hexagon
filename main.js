@@ -80,7 +80,6 @@ class HexagonRenderer {
     this.program = this.createProgram();
     this.vertexBuffer = gl.createBuffer();
     this.zoom = gl.canvas.height > gl.canvas.width ? gl.canvas.height / gl.canvas.width : 1;
-    console.log(this.zoom);
     window.addEventListener('resize', (event) => {
       const W  = gl.canvas.clientWidth;
       const H = gl.canvas.clientHeight;
@@ -90,7 +89,6 @@ class HexagonRenderer {
         gl.canvas.height = H;
         gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
         this.zoom = gl.canvas.height > gl.canvas.width ? gl.canvas.height / gl.canvas.width : 1
-        console.log(this.zoom);
       }
     });
 
@@ -450,6 +448,7 @@ class HexagonGame {
     this.controls = new HexagonControls(this.state, canvas);
     this.timeSinceLastObstacle = 0;
     this.frameTime = 0;
+    this.playTime = 0;
 
     this.prevTime = performance.now();
     this.boundTickCb = (...args) => this.tick(...args);
@@ -480,9 +479,13 @@ class HexagonGame {
         }
       }
     }
+    this.playTime += delta;
     window.requestAnimationFrame(this.boundTickCb);
   }
 
+  getPlayTime() {
+    return this.playTime;
+  }
   getFPS() {
     if (this.frameTime === 0) {
       return '?';
@@ -496,3 +499,11 @@ const game = new HexagonGame(canvas);
 const fpsUpdater = window.setInterval(() => {
   document.title = `Hexagon (${game.getFPS()} fps)`;
 }, 2000);
+const timeDisplay = document.getElementById('hexagon-time');
+const secondsDisplay = timeDisplay.querySelector('.hexagon-time-seconds');
+const millisDisplay = timeDisplay.querySelector('.hexagon-time-millis');
+const timeUpdater = window.setInterval(() => {
+  const time = game.getPlayTime();
+  secondsDisplay.textContent = Math.floor(time / 1000);
+  millisDisplay.textContent = ('' + Math.floor((time - Math.floor(time / 1000) * 1000) / 10)).padStart(2, '0');
+}, 1);
