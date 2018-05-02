@@ -332,6 +332,7 @@ class HexagonControls {
   }
 }
 
+// begin obstacle generators
 function GenerateSpirals(state, { obstacleHeight = 0.05, obstacleDist = 0.03, numLines = 10, initialY = 1.0, reverse = false } = {}) {
   const activeSlots = state.getActiveSlotIndices();
   if (activeSlots.length % 3 !== 0) {
@@ -367,7 +368,9 @@ function GenerateCheckerBoard(state, { obstacleHeight = 0.05, lineDist = 0.15, n
   const duration = y / state.obstacleSpeed * HexagonConstants.targetTickTime;
   return duration;
 }
+// end obstacle generators
 
+// Manage state required to interpolate time-based progress of animations etc.
 class HexagonTween {
   constructor(duration, cooldown, callback) {
     this.duration = duration;
@@ -399,6 +402,7 @@ class HexagonLevel1 {
     const fullRotationTime = 3000;
     const colorInterpolationDuration = 1000;
     const timeBetweenObstacles = 0;
+    const zoomPeriod = 1500;
     const { state } = this;
     this.tweens = [
       // interpolate slot colors
@@ -431,6 +435,11 @@ class HexagonLevel1 {
       // interpolate rotation
       new HexagonTween(fullRotationTime, 0, (progress) => {
         state.renderConfig.rotation = progress;
+      }),
+      // zoom
+      new HexagonTween(zoomPeriod, 0, (progress) => {
+        const zoommand = (Math.abs(0.5 - progress) - 0.5) * 0.3;
+        state.renderConfig.zoom = 1 + zoommand;
       })
     ];
     this.reset();
