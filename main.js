@@ -37,6 +37,7 @@ class HexagonState {
     this.running = true;
     this.position = 1 / 12;
     this.obstacleSpeed = 0.005;
+    this.cursorSpeed = 0.03;
     this.slots = new Array(6).fill(1).map(i => new HexagonSlot());
     this.renderConfig = renderConfig;
   }
@@ -295,9 +296,8 @@ class HexagonControls {
     const effect = delta / HexagonConstants.targetTickTime;
     const left = keysDown.has('ArrowLeft') || this.touchLeft;
     const right = keysDown.has('ArrowRight') || this.touchRight;
-    const distPerFrame = 0.03;
     if ((left || right) && !(left && right)) {
-      const move = distPerFrame * effect;
+      const move = gamestate.cursorSpeed * effect;
       const sign = left ? -1 : 1;
       let newpos = gamestate.position + move * sign;
       const wrapcorrection = newpos > 1 ? -1 : (newpos < 0 ? 1 : 0);
@@ -368,23 +368,74 @@ function GenerateCheckerBoard(state, { obstacleHeight = 0.05, lineDist = 0.15, n
   return duration;
 }
 
+class HexagonTween {
+  constructor(duration, cooldown, callback) {
+    this.duration = duration;
+    this.cooldown = cooldown;
+    this.callback = callback;
+    this.timePassed = 0;
+  }
+  tick(delta) {
+    this.timePassed += delta;
+    const { callback, cooldown, duration, timePassed } = this;
+    if (timePassed <= duration + delta) {
+      const progress = Math.min(timePassed / duration, 1);
+      callback(progress, this);
+    }
+    if (timePassed > duration + cooldown) {
+      this.timePassed = 0;
+    }
+  }
+}
+
 class HexagonLevel1 {
   constructor() {
     const renderConfig = new HexagonRenderConfig();
     this.state = new HexagonState(renderConfig);
-    this.reset();
-
-    this.obstacleGens = [GenerateSpirals, GenerateReverseSpirals, GenerateCheckerBoard];
-    this.timeBetweenObstacles = 0;
-    this.fullRotationTime = 3000;
-  }
-  reset() {
     this.slotColor1 = [0.9, 0.9, 0.9];
     this.slotColor2 = [1, 1, 1];
-    this.colorInterpolationDuration = 1000;
-    this.timeSinceCIStart = 0;
-    this.currentGenDuration = 0;
-    this.timeSinceGen = 0;
+
+    this.obstacleGens = [GenerateSpirals, GenerateReverseSpirals, GenerateCheckerBoard];
+    const fullRotationTime = 3000;
+    const colorInterpolationDuration = 1000;
+    const timeBetweenObstacles = 0;
+    const { state } = this;
+    this.tweens = [
+      // interpolate slot colors
+      new HexagonTween(colorInterpolationDuration, 0, (progress) => {
+        const p = progress;
+        const q = 1 - p;
+        for (let i = 0; i < this.slotColor1.length; i++) {
+          state.renderConfig.slotColors[0][i] = p * this.slotColor1[i] + q * this.slotColor2[i];
+          state.renderConfig.slotColors[1][i] = q * this.slotColor1[i] + p * this.slotColor2[i];
+        }
+        if (progress == 1) {
+          const swap = this.slotColor1;
+          this.slotColor1 = this.slotColor2;
+          this.slotColor2 = swap;
+        }
+      }),
+      // generate obstacles
+      new HexagonTween(1 /* end asap */, timeBetweenObstacles, (progress, tween) => {
+        if (progress == 1 && state.running) {
+          let duration = -1;
+          const opts = {};
+          do {
+            const genIdx = Math.floor(Math.random() * this.obstacleGens.length);
+            const gen = this.obstacleGens[genIdx];
+            duration = gen(state, opts);
+          } while(duration < 0);
+          tween.duration = duration;
+        }
+      }),
+      // interpolate rotation
+      new HexagonTween(fullRotationTime, 0, (progress) => {
+        state.renderConfig.rotation = progress;
+      })
+    ];
+    this.reset();
+  }
+  reset() {
     this.timeSinceRotationStart = 0;
 
     const cursorColor1 = [0.5, 0.5, 0.5];
@@ -398,56 +449,8 @@ class HexagonLevel1 {
   }
   tick(delta) {
     const { state } = this;
-    // interpolate colors
-    this.timeSinceCIStart += delta;
-    if (this.timeSinceCIStart >= this.colorInterpolationDuration) {
-      const swap = this.slotColor1;
-      this.slotColor1 = this.slotColor2;
-      this.slotColor2 = swap;
-      this.timeSinceCIStart = 0;
-    }
-    const p = this.timeSinceCIStart / this.colorInterpolationDuration;
-    const q = 1 - p;
-    for (let i = 0; i < this.slotColor1.length; i++) {
-      state.renderConfig.slotColors[0][i] = p * this.slotColor1[i] + q * this.slotColor2[i];
-      state.renderConfig.slotColors[1][i] = q * this.slotColor1[i] + p * this.slotColor2[i];
-    }
-
-    // update obstacles
-    if (state.running) {
-      const effect = delta / HexagonConstants.targetTickTime;
-      for (let s = 0; s < state.slots.length; s++) {
-        const slot = state.slots[s];
-        for (let o = 0; o < slot.obstacles.length; o++) {
-          const obstacle = slot.obstacles[o];
-          obstacle.distance -= state.obstacleSpeed * effect;
-          // dispose of dead obstacles
-          if (obstacle.distance + obstacle.height < 0) {
-            slot.obstacles.splice(o, 1);
-            o--;
-          }
-        }
-      }
-
-      // create new obstacles if necessary
-      this.timeSinceGen += delta;
-      if (this.timeSinceGen >= this.currentGenDuration + this.timeBetweenObstacles) {
-        let opts = {};
-        do {
-          const gen = this.obstacleGens[Math.floor(Math.random() * this.obstacleGens.length)];
-          this.currentGenDuration = gen(state, opts);
-        } while(this.currentGenDuration < 0);
-        this.timeSinceGen = 0;
-      }
-    }
-
-    // interpolate rotation
-    this.timeSinceRotationStart += delta;
-    if (this.timeSinceRotationStart >= this.fullRotationTime) {
-      this.timeSinceRotationStart = 0;
-    } else {
-      state.renderConfig.rotation = this.timeSinceRotationStart / this.fullRotationTime;
-    }
+    for (let i = 0; i < this.tweens.length; i++)
+      this.tweens[i].tick(delta);
   }
   getState() {
     return this.state;
@@ -490,6 +493,22 @@ class HexagonGame {
     this.controls.tick(delta);
     // apply potential rendering and game behavior changes
     this.level.tick(delta);
+    // update obstacles
+    if (state.running) {
+      const effect = delta / HexagonConstants.targetTickTime;
+      for (let s = 0; s < state.slots.length; s++) {
+        const slot = state.slots[s];
+        for (let o = 0; o < slot.obstacles.length; o++) {
+          const obstacle = slot.obstacles[o];
+          obstacle.distance -= state.obstacleSpeed * effect;
+          // dispose of dead obstacles
+          if (obstacle.distance + obstacle.height < 0) {
+            slot.obstacles.splice(o, 1);
+            o--;
+          }
+        }
+      }
+    }
     // render new frame
     this.renderer.render(delta);
     if (state.running) {
@@ -532,4 +551,4 @@ const timeUpdater = window.setInterval(() => {
   const time = game.getPlayTime();
   secondsDisplay.textContent = Math.floor(time / 1000);
   millisDisplay.textContent = ('' + Math.floor((time - Math.floor(time / 1000) * 1000) / 10)).padStart(2, '0');
-}, 1);
+}, 10);
