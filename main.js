@@ -1,4 +1,6 @@
 const HexagonConstants = {
+  innerHexagonY: 0.02,
+  outerHexagonY: 0.03,
   cursorY: 0.05,
   cursorW: 0.1,
   cursorH: 0.015,
@@ -25,6 +27,8 @@ class HexagonRenderConfig {
   constructor() {
     this.cursorColor1 = null;
     this.cursorColor2 = null;
+    this.innerHexagonColor = null;
+    this.outerHexagonColor = null;
     this.obstacleColor = null;
     this.slotColors = null;
     this.rotation = 0;
@@ -117,14 +121,14 @@ class HexagonRenderer {
     gl.enableVertexAttribArray(vertexLoc);
 
     const colorLoc = gl.getUniformLocation(program, 'color');
-    let offset = 3;
+    let offset = 3 + 8 + 8; // inner hex + outer hex + cursor
     for (let i = 0; i < gamestate.slots.length; i++) {
       gl.uniform3f(colorLoc, ...config.slotColors[i % config.slotColors.length]);
       gl.drawArrays(gl.TRIANGLE_STRIP, offset, 4);
       offset += 4;
     }
     // render obstacles
-    if (offset !== 3 + 4 * gamestate.slots.length)
+    if (offset !== 3 + 8 + 8 + 4 * gamestate.slots.length)
       throw new Error('Offset into vertices not as expected');
     const obstacleCount = gamestate.slots.reduce((acc, slot) => { return acc + slot.obstacles.length; }, 0);
     gl.uniform3f(colorLoc, ...config.obstacleColor);
@@ -132,9 +136,15 @@ class HexagonRenderer {
       gl.drawArrays(gl.TRIANGLE_STRIP, offset, 4);
       offset += 4;
     }
+    // render outer hexagon
+    gl.uniform3f(colorLoc, ...config.outerHexagonColor);
+    gl.drawArrays(gl.TRIANGLE_FAN, 0, 8);
+    // render inner hexagon
+    gl.uniform3f(colorLoc, ...config.innerHexagonColor);
+    gl.drawArrays(gl.TRIANGLE_FAN, 8, 8);
     // render cursor
     gl.uniform3f(colorLoc, ...config.cursorColor1);
-    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.drawArrays(gl.TRIANGLES, 16, 3);
 
     gl.flush();
   }
@@ -142,8 +152,18 @@ class HexagonRenderer {
   updateVertexBuffer() {
     const { gamestate, gl } = this;
     const vertices = [];
+    const { cursorH, cursorW, cursorY, innerHexagonY, outerHexagonY } = HexagonConstants;
+    // create outer hexagon vertices
+    vertices.push(0, 0);
+    for (let i = 0; i <= gamestate.slots.length; i++) {
+      vertices.push(i / 6, outerHexagonY);
+    }
+    // create inner hexagon vertices
+    vertices.push(0, 0);
+    for (let i = 0; i <= gamestate.slots.length; i++) {
+      vertices.push(i / 6, innerHexagonY);
+    }
     // create cursor vertices
-    const { cursorH, cursorW, cursorY } = HexagonConstants;
     vertices.push(gamestate.position - cursorW / 2, cursorY - cursorH);
     vertices.push(gamestate.position + cursorW / 2, cursorY - cursorH);
     vertices.push(gamestate.position, cursorY);
@@ -449,10 +469,14 @@ class HexagonLevel1 {
 
     const cursorColor1 = [0.5, 0.5, 0.5];
     const cursorColor2 = [0.5, 0.5, 0.5];
+    const innerHexagonColor = [1, 1, 1];
+    const outerHexagonColor = [0.5, 0.5, 0.5];
     const obstacleColor = [0.5, 0.5, 0.5];
     const slotColors = [this.slotColor1.slice(0), this.slotColor2.slice(0)];
     this.state.renderConfig.cursorColor1 = cursorColor1;
     this.state.renderConfig.cursorColor2 = cursorColor2;
+    this.state.renderConfig.innerHexagonColor = innerHexagonColor;
+    this.state.renderConfig.outerHexagonColor = outerHexagonColor;
     this.state.renderConfig.obstacleColor = obstacleColor;
     this.state.renderConfig.slotColors = slotColors;
   }
