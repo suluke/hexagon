@@ -1,7 +1,7 @@
 const HexagonConstants = {
   innerHexagonY: 0.02,
   outerHexagonY: 0.03,
-  cursorY: 0.05,
+  cursorY: 0.035,
   cursorW: 0.1,
   cursorH: 0.015,
   godMode: false,
@@ -163,10 +163,14 @@ class HexagonRenderer {
     for (let i = 0; i <= gamestate.slots.length; i++) {
       vertices.push(i / 6, innerHexagonY);
     }
+    // cursor coordinates
+    const cLeft = gamestate.position - cursorW / 2;
+    const cRight = gamestate.position + cursorW / 2;
+    const cTop = cursorY + cursorH;
     // create cursor vertices
-    vertices.push(gamestate.position - cursorW / 2, cursorY - cursorH);
-    vertices.push(gamestate.position + cursorW / 2, cursorY - cursorH);
-    vertices.push(gamestate.position, cursorY);
+    vertices.push(cLeft, cursorY);
+    vertices.push(cRight, cursorY);
+    vertices.push(gamestate.position, cTop);
     // create slot vertices
     const slotWidthSum = gamestate.getSlotWidthSum();
     let x = 0;
@@ -353,7 +357,8 @@ class HexagonControls {
 }
 
 // begin obstacle generators
-function GenerateSpirals(state, { obstacleHeight = 0.05, obstacleDist = 0.03, numLines = 10, initialY = 1.0, reverse = false } = {}) {
+// Reference: http://hexagon.wikia.com/wiki/Super_Hexagon
+function GenerateSpiral(state, { obstacleHeight = 0.05, obstacleDist = 0.03, numLines = 10, initialY = 1.0, reverse = false } = {}) {
   const activeSlots = state.getActiveSlotIndices();
   if (activeSlots.length % 3 !== 0) {
     return -1;
@@ -367,14 +372,13 @@ function GenerateSpirals(state, { obstacleHeight = 0.05, obstacleDist = 0.03, nu
     y += obstacleDist;
   }
   y -= obstacleDist;
-  const duration = y / state.obstacleSpeed * HexagonConstants.targetTickTime;
-  return duration;
+  return y;
 }
-function GenerateReverseSpirals(state, options) {
+function GenerateReverseSpiral(state, options) {
   options.reverse = !options.reverse;
-  return GenerateSpirals(state, options);
+  return GenerateSpiral(state, options);
 }
-function GenerateCheckerBoard(state, { obstacleHeight = 0.05, lineDist = 0.15, numLines = 5, initialY = 1.0 } = {}) {
+function GenerateRain(state, { obstacleHeight = 0.05, lineDist = 0.15, numLines = 5, initialY = 1.0 } = {}) {
   let y = initialY;
   for (let line = 0; line < numLines; line++) {
     for (let s = 0; s < state.slots.length; s++) {
@@ -385,8 +389,46 @@ function GenerateCheckerBoard(state, { obstacleHeight = 0.05, lineDist = 0.15, n
     y += lineDist;
   }
   y -= (lineDist - obstacleHeight);
-  const duration = y / state.obstacleSpeed * HexagonConstants.targetTickTime;
-  return duration;
+  return y;
+}
+function GenerateC(state, { obstacleHeight = 0.05, initialY = 1.0, openSlotOffset = -1 } = {}) {
+  const activeSlots = state.getActiveSlotIndices();
+  if (openSlotOffset < 0) {
+    openSlotOffset = Math.floor(Math.random() * activeSlots.length);
+  }
+  for (let i = 0; i < activeSlots.length; i++) {
+    if (i != openSlotOffset) {
+      state.slots[activeSlots[i]].obstacles.push(new HexagonObstacle(initialY, obstacleHeight));
+    }
+  }
+  return initialY + obstacleHeight;
+}
+function GenerateLadder(state, { obstacleHeight = 0.05, initialY = 1.0, numSteps = 5, stepDist = 0.05 } = {}) {
+  const activeSlots = state.getActiveSlotIndices();
+  if (activeSlots.length < 6)
+    return -1;
+  const height = (obstacleHeight + stepDist) * numSteps * 2 - stepDist;
+  const stem1Slot = 0;
+  const stem2Slot = (stem1Slot + 3) % activeSlots.length;
+  let y = initialY;
+  state.slots[stem1Slot].obstacles.push(new HexagonObstacle(y, height));
+  state.slots[stem2Slot].obstacles.push(new HexagonObstacle(y, height));
+  for (let i = 0; i < numSteps; i++) {
+    state.slots[(stem1Slot + 1) % activeSlots.length].obstacles.push(new HexagonObstacle(y, obstacleHeight));
+    state.slots[(stem2Slot + 1) % activeSlots.length].obstacles.push(new HexagonObstacle(y, obstacleHeight));
+    y += obstacleHeight + stepDist;
+    state.slots[(stem1Slot + 2) % activeSlots.length].obstacles.push(new HexagonObstacle(y, obstacleHeight));
+    state.slots[(stem2Slot + 2) % activeSlots.length].obstacles.push(new HexagonObstacle(y, obstacleHeight));
+    y += obstacleHeight + stepDist;
+  }
+  y -= stepDist;
+  return y;
+}
+function GenerateDoubleTurn(state, opts = {}) {
+  return -1;
+}
+function GenerateBat(state, opts = {}) {
+  return -1;
 }
 // end obstacle generators
 
@@ -418,7 +460,10 @@ class HexagonLevel1 {
     this.slotColor1 = [0.9, 0.9, 0.9];
     this.slotColor2 = [1, 1, 1];
 
-    this.obstacleGens = [GenerateSpirals, GenerateReverseSpirals, GenerateCheckerBoard];
+    this.obstacleGens = [
+      GenerateSpiral, GenerateReverseSpiral, GenerateRain, GenerateC,
+      GenerateLadder, GenerateDoubleTurn, GenerateBat
+    ];
     const fullRotationTime = 3000;
     const colorInterpolationDuration = 1000;
     const timeBetweenObstacles = 0;
@@ -442,14 +487,14 @@ class HexagonLevel1 {
       // generate obstacles
       new HexagonTween(1 /* end asap */, timeBetweenObstacles, (progress, tween) => {
         if (progress == 1 && state.running) {
-          let duration = -1;
+          let height = -1;
           const opts = {};
           do {
             const genIdx = Math.floor(Math.random() * this.obstacleGens.length);
             const gen = this.obstacleGens[genIdx];
-            duration = gen(state, opts);
-          } while(duration < 0);
-          tween.duration = duration;
+            height = gen(state, opts);
+          } while(height < 0);
+          tween.duration = height / state.obstacleSpeed * HexagonConstants.targetTickTime;
         }
       }),
       // interpolate rotation
