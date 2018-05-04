@@ -430,6 +430,17 @@ function GenerateDoubleTurn(state, opts = {}) {
 function GenerateBat(state, opts = {}) {
   return -1;
 }
+function GeneratePot(state, { obstacleHeight = 0.05, initialY = 1.0, offset = 0 } = {}) {
+  const activeSlots = state.getActiveSlotIndices();
+  if (activeSlots.length < 6)
+    return -1;
+  for (let i = 0; i < 3; i++) {
+    state.slots[(i + offset) % activeSlots.length].obstacles.push(new HexagonObstacle(initialY, obstacleHeight));
+  }
+  state.slots[(4 + offset) % activeSlots.length].obstacles.push(new HexagonObstacle(initialY, obstacleHeight));
+
+  return obstacleHeight + initialY;
+}
 // end obstacle generators
 
 // Manage state required to interpolate time-based progress of animations etc.
@@ -462,7 +473,7 @@ class HexagonLevel1 {
 
     this.obstacleGens = [
       GenerateSpiral, GenerateReverseSpiral, GenerateRain, GenerateC,
-      GenerateLadder, GenerateDoubleTurn, GenerateBat
+      GenerateLadder, GenerateDoubleTurn, GenerateBat, GeneratePot
     ];
     const fullRotationTime = 3000;
     const colorInterpolationDuration = 1000;
