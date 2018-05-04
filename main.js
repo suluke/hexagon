@@ -33,6 +33,7 @@ class HexagonRenderConfig {
     this.slotColors = null;
     this.rotation = 0;
     this.zoom = 1;
+    this.cameraOffset = [0, 0];
   }
 }
 
@@ -112,6 +113,8 @@ class HexagonRenderer {
     gl.uniform1f(rotationLoc, config.rotation);
     const zoomLoc = gl.getUniformLocation(program, 'zoom');
     gl.uniform1f(zoomLoc, this.zoom * config.zoom);
+    const zLoc = gl.getUniformLocation(program, 'z');
+    gl.uniform1f(zLoc, 0);
     
     // render slots
     this.updateVertexBuffer();
@@ -222,6 +225,7 @@ class HexagonRenderer {
       uniform float aspect;
       uniform float rotation;
       uniform float zoom;
+      uniform float z;
 
       float PI = 3.14159265359;
 
