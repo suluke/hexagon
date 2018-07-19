@@ -1,9 +1,9 @@
 const HexagonConstants = {
-  innerHexagonY: 0.02,
+  innerHexagonY: 0.025,
   outerHexagonY: 0.03,
   cursorY: 0.035,
-  cursorW: 0.1,
-  cursorH: 0.015,
+  cursorW: 0.05,
+  cursorH: 0.008,
   godMode: false,
   targetTickTime: Math.round(1 / 60 * 1000)
 };
@@ -13,6 +13,26 @@ class HexagonObstacle {
   constructor(distance, height) {
     this.distance = distance;
     this.height = height;
+  }
+}
+
+class HexagonObstaclePool {
+  constructor() {
+    this.obstacles = [];
+  }
+  acquire(distance, height) {
+    if (this.obstacles.length === 0)
+      return new HexagonObstacle(distance, height);
+    const o = this.obstacles.pop();
+    o.distance = distance;
+    o.height = height;
+    return o;
+  }
+  release(o) {
+    this.obstacles.push(o);
+  }
+  releaseAll(os) {
+    Array.prototype.push.apply(this.obstacles, os);
   }
 }
 
@@ -43,31 +63,30 @@ class HexagonState {
     this.position = 1 / 12;
     this.obstacleSpeed = 0.005;
     this.cursorSpeed = 0.03;
-    this.slots = new Array(6).fill(1).map(i => new HexagonSlot());
+    this.slots = new Array(6).fill(null).map(elm => new HexagonSlot());
     this.renderConfig = renderConfig;
   }
   getSlotWidthSum() {
     return this.slots.reduce((acc, slot) => acc + slot.width, 0);
   }
-  getActiveSlotIndices() {
-    return this.slots.reduce((acc, slot, idx) => {
-      if (slot.width > 0)
-        acc.push(idx);
-      return acc;
-    }, []);
+  getActiveSlots() {
+    return this.slots.filter((slot) => slot.width > 0);
   }
-  getCurrentSlotIdx(position = this.position) {
-    const activeSlots = this.getActiveSlotIndices();
-    const slotWidthSum = this.getSlotWidthSum();
+  getSlotIdxAtPosition(position) {
+    const { slots } = this;
+    // we are on a slot if it's a) wider than 0 and b) the slot's right
+    // border is the first that is greater than position
+    const slotWidthSum = this.getSlotWidthSum(); // in [0, 6], position in [0, 1)
     let s = 0; // the index of the slot we're on according to `position`
-    for (let x = 0; s < activeSlots.length; s++) {
-      x += this.slots[activeSlots[s]].width / slotWidthSum;
-      if (position < x)
-        break;
-    }
-    if (s >= activeSlots.length)
-      throw new Error(`target slot out of bounds (${s}/${activeSlots.length})`);
-    return activeSlots[s];
+    // we are on slot s if position in [left, right).
+    for (let x = slots[0].width; x <= position * slotWidthSum; s++)
+      x += slots[(s + 1) % slots.length].width;
+    if (s >= slots.length)
+      throw new Error(`target slot out of bounds (${s}/${this.slots.length})`);
+    return s;
+  }
+  getCurrentSlotIdx() {
+    return this.getSlotIdxAtPosition(this.position);
   }
 }
 // end game model
@@ -86,7 +105,12 @@ class HexagonRenderer {
     this.config = gamestate.renderConfig;
     this.program = this.createProgram();
     this.vertexBuffer = gl.createBuffer();
-    this.zoom = gl.canvas.height > gl.canvas.width ? gl.canvas.height / gl.canvas.width : 1;
+    this.projection = [
+      1, 0, 0, 0,
+      0, 1, 0, 0,
+      0, 0, 1, 0,
+      0, 0, 0, 1
+    ];
     window.addEventListener('resize', (event) => {
       const W  = gl.canvas.clientWidth;
       const H = gl.canvas.clientHeight;
@@ -95,7 +119,6 @@ class HexagonRenderer {
         gl.canvas.width  = W;
         gl.canvas.height = H;
         gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
-        this.zoom = gl.canvas.height > gl.canvas.width ? gl.canvas.height / gl.canvas.width : 1
       }
     });
 
@@ -111,10 +134,15 @@ class HexagonRenderer {
     gl.uniform1f(aspectLoc, gl.canvas.width / gl.canvas.height);
     const rotationLoc = gl.getUniformLocation(program, 'rotation');
     gl.uniform1f(rotationLoc, config.rotation);
-    const zoomLoc = gl.getUniformLocation(program, 'zoom');
-    gl.uniform1f(zoomLoc, this.zoom * config.zoom);
     const zLoc = gl.getUniformLocation(program, 'z');
     gl.uniform1f(zLoc, 0);
+    const camLoc = gl.getUniformLocation(program, 'cam');
+    gl.uniform2f(camLoc, ...config.cameraOffset);
+    const projLoc = gl.getUniformLocation(program, 'proj');
+    const proj = this.projection;
+    proj[0 * 4 + 0] = config.zoom;
+    proj[1 * 4 + 1] = config.zoom;
+    gl.uniformMatrix4fv(projLoc, false, proj);
     
     // render slots
     this.updateVertexBuffer();
@@ -149,9 +177,10 @@ class HexagonRenderer {
     offset += 8;
     // render cursor shadow
     if (config.cursorShadowColor) {
-      gl.uniform1f(zLoc, 0.5);
+      gl.uniform1f(zLoc, -0.05);
       gl.uniform3f(colorLoc, ...config.cursorShadowColor);
       gl.drawArrays(gl.TRIANGLES, offset, 3);
+      gl.uniform1f(zLoc, 0);
     }
     offset += 3;
     // render cursor
@@ -224,21 +253,35 @@ class HexagonRenderer {
       attribute vec4 vertex;
       uniform float aspect;
       uniform float rotation;
-      uniform float zoom;
       uniform float z;
+      uniform mat4 proj;
 
       float PI = 3.14159265359;
 
       void main() {
-        float r = 1. / cos(PI / 3.);
-        float alpha = fract(vertex.x - 1. / 12. + 1. + rotation) * 2. * PI;
+        // we want to rotate the the edge coordinates of the slots to be
+        // placed equidistantly on a unit circle. Edge coordinates are in
+        // the range [0, 1]. Therefore, 0 should be mapped to 0 degrees
+        // rotation, 0.5 to 180 degrees etc. => the angle is x * 2 * PI
+        float alpha = fract(vertex.x + rotation) * 2. * PI;
+
+        // viewport is from -1 to 1 and an obstacle should become visible
+        // as soon as its lower y coordinate is <= 1. Assuming aspect is
+        // 1 for now, an obstacle coming from 45 degrees with distance
+        // 1 will become visible at (1.0/1.0) => it should be sqrt(2)
+        // away from the center
+        float r = sqrt(2.);
+
         vec4 pos;
+        // first, convert from "normal" xy coords to coords on circle
         pos.x = sin(alpha) * r;
         pos.y = cos(alpha) * r * aspect;
-        pos = pos * vertex.y * zoom;
+        // scale the point by distance to bottom
+        pos *= vertex.y;
         pos.z = vertex.z;
-        pos.a = vertex.a;
-        gl_Position = pos / 2.0;
+        pos.w = vertex.w;
+        pos = proj * pos;
+        gl_Position = pos;
       }
     `;
     const fsSource = `
@@ -341,30 +384,24 @@ class HexagonControls {
       const move = gamestate.cursorSpeed * effect;
       const sign = left ? -1 : 1;
       let newpos = gamestate.position + move * sign;
-      const wrapcorrection = newpos > 1 ? -1 : (newpos < 0 ? 1 : 0);
+      const wrapcorrection = newpos >= 1 ? -1 : (newpos < 0 ? 1 : 0);
       newpos += wrapcorrection;
       // Check for sideways collisions
-      const activeSlots = gamestate.getActiveSlotIndices();
+      const { slots } = gamestate;
       const slotWidthSum = gamestate.getSlotWidthSum();
-      let s = 0; // the index of the slot we *should* move onto in activeSlots
-      for (let x = 0; s < activeSlots.length; s++) {
-        x += gamestate.slots[activeSlots[s]].width / slotWidthSum;
-        if (newpos < x)
-          break;
-      }
-      if (s >= activeSlots.length)
-        throw new Error(`target slot out of bounds (${s}/${activeSlots.length})`);
-      const targetSlot = gamestate.slots[activeSlots[s]];
-      const { cursorY } = HexagonConstants;
+      let s = gamestate.getSlotIdxAtPosition(newpos); // the index of the slot we *should* move onto
+      const targetSlot = gamestate.slots[s];
+      const { cursorY, cursorH } = HexagonConstants;
+      const cursorTip = cursorY + cursorH;
       for (let o = 0; o < targetSlot.obstacles.length; o++) {
         const obstacle = targetSlot.obstacles[o];
-        if (obstacle.distance <= cursorY && obstacle.distance + obstacle.height > cursorY) {
-          // can't move here
-          s = (s - sign + activeSlots.length) % activeSlots.length;
-          const slotLeft = activeSlots.reduce((acc, idx) => (idx < s ? acc + gamestate.slots[activeSlots[idx]].width : acc), 0);
-          newpos = slotLeft / slotWidthSum;
+        if (obstacle.distance <= cursorTip && obstacle.distance + obstacle.height > cursorTip) {
+          // collision - can't move here
+          s = gamestate.getCurrentSlotIdx();
+          let posInSlot = slots.filter((slot, idx) => idx < s).reduce((acc, slot) => acc + slot.width, 0.);
           if (right)
-            newpos += gamestate.slots[activeSlots[s]].width / slotWidthSum - 0.0001;
+            posInSlot += slots[s].width - 0.0001;
+          newpos = posInSlot / slotWidthSum;
           break;
         }
       }
@@ -375,32 +412,36 @@ class HexagonControls {
 
 // begin obstacle generators
 // Reference: http://hexagon.wikia.com/wiki/Super_Hexagon
-function GenerateSpiral(state, { obstacleHeight = 0.05, obstacleDist = 0.03, numLines = 10, initialY = 1.0, reverse = false } = {}) {
-  const activeSlots = state.getActiveSlotIndices();
-  if (activeSlots.length % 3 !== 0) {
+function GenerateSpiral(state, pool, { obstacleHeight = 0.05, numLines = 10, initialY = 1.0, reverse = false } = {}) {
+  const activeSlots = state.getActiveSlots();
+  if (activeSlots.length % 3 !== 0 || numLines <= 0) {
     return -1;
   }
   let y = initialY;
   const r = reverse ? -1 : 1;
   for (let line = 0; line < numLines; line++) {
     for (let i = 0; i < activeSlots.length; i += 3) {
-      state.slots[activeSlots[(i + line * r + numLines) % activeSlots.length]].obstacles.push(new HexagonObstacle(y, obstacleHeight));
+      const slot = activeSlots[(i + line * r + numLines) % activeSlots.length];
+      if (line === 1)
+        slot.obstacles.push(pool.acquire(y - obstacleHeight, 2 * obstacleHeight));
+      else
+        slot.obstacles.push(pool.acquire(y, obstacleHeight));
     }
-    y += obstacleDist;
+    y += obstacleHeight;
   }
-  y -= obstacleDist;
+  y -= obstacleHeight;
   return y;
 }
-function GenerateReverseSpiral(state, options) {
+function GenerateReverseSpiral(state, pool, options) {
   options.reverse = !options.reverse;
-  return GenerateSpiral(state, options);
+  return GenerateSpiral(state, pool, options);
 }
-function GenerateRain(state, { obstacleHeight = 0.05, lineDist = 0.15, numLines = 5, initialY = 1.0 } = {}) {
+function GenerateRain(state, pool, { obstacleHeight = 0.05, lineDist = 0.15, numLines = 5, initialY = 1.0 } = {}) {
   let y = initialY;
   for (let line = 0; line < numLines; line++) {
     for (let s = 0; s < state.slots.length; s++) {
       if ((s % 2) ^ (line % 2) === 0) {
-        state.slots[s].obstacles.push(new HexagonObstacle(y, obstacleHeight));
+        state.slots[s].obstacles.push(pool.acquire(y, obstacleHeight));
       }
     }
     y += lineDist;
@@ -408,53 +449,50 @@ function GenerateRain(state, { obstacleHeight = 0.05, lineDist = 0.15, numLines 
   y -= (lineDist - obstacleHeight);
   return y;
 }
-function GenerateC(state, { obstacleHeight = 0.05, initialY = 1.0, openSlotOffset = -1 } = {}) {
-  const activeSlots = state.getActiveSlotIndices();
-  if (openSlotOffset < 0) {
+function GenerateC(state, pool, { obstacleHeight = 0.03, initialY = 1.0, openSlotOffset = -1 } = {}) {
+  const activeSlots = state.getActiveSlots();
+  if (openSlotOffset < 0)
     openSlotOffset = Math.floor(Math.random() * activeSlots.length);
-  }
-  for (let i = 0; i < activeSlots.length; i++) {
-    if (i != openSlotOffset) {
-      state.slots[activeSlots[i]].obstacles.push(new HexagonObstacle(initialY, obstacleHeight));
-    }
-  }
+  for (let i = 0; i < activeSlots.length; i++)
+    if (i != openSlotOffset)
+      activeSlots[i].obstacles.push(pool.acquire(initialY, obstacleHeight));
   return initialY + obstacleHeight;
 }
-function GenerateLadder(state, { obstacleHeight = 0.05, initialY = 1.0, numSteps = 5, stepDist = 0.05 } = {}) {
-  const activeSlots = state.getActiveSlotIndices();
-  if (activeSlots.length < 6)
+function GenerateLadder(state, pool, { obstacleHeight = 0.05, initialY = 1.0, numSteps = 4, stepDist = 0.09 } = {}) {
+  const activeSlots = state.getActiveSlots();
+  if (activeSlots.length !== 6)
     return -1;
   const height = (obstacleHeight + stepDist) * numSteps * 2 - stepDist;
   const stem1Slot = 0;
-  const stem2Slot = (stem1Slot + 3) % activeSlots.length;
+  const stem2Slot = (stem1Slot + 3) % 6;
   let y = initialY;
-  state.slots[stem1Slot].obstacles.push(new HexagonObstacle(y, height));
-  state.slots[stem2Slot].obstacles.push(new HexagonObstacle(y, height));
+  state.slots[stem1Slot].obstacles.push(pool.acquire(y, height));
+  state.slots[stem2Slot].obstacles.push(pool.acquire(y, height));
   for (let i = 0; i < numSteps; i++) {
-    state.slots[(stem1Slot + 1) % activeSlots.length].obstacles.push(new HexagonObstacle(y, obstacleHeight));
-    state.slots[(stem2Slot + 1) % activeSlots.length].obstacles.push(new HexagonObstacle(y, obstacleHeight));
+    state.slots[(stem1Slot + 1) % 6].obstacles.push(pool.acquire(y, obstacleHeight));
+    state.slots[(stem2Slot + 1) % 6].obstacles.push(pool.acquire(y, obstacleHeight));
     y += obstacleHeight + stepDist;
-    state.slots[(stem1Slot + 2) % activeSlots.length].obstacles.push(new HexagonObstacle(y, obstacleHeight));
-    state.slots[(stem2Slot + 2) % activeSlots.length].obstacles.push(new HexagonObstacle(y, obstacleHeight));
+    state.slots[(stem1Slot + 2) % 6].obstacles.push(pool.acquire(y, obstacleHeight));
+    state.slots[(stem2Slot + 2) % 6].obstacles.push(pool.acquire(y, obstacleHeight));
     y += obstacleHeight + stepDist;
   }
   y -= stepDist;
   return y;
 }
-function GenerateDoubleTurn(state, opts = {}) {
+function GenerateDoubleTurn(state, pool, opts = {}) {
   return -1;
 }
-function GenerateBat(state, opts = {}) {
+function GenerateBat(state, pool, opts = {}) {
   return -1;
 }
-function GeneratePot(state, { obstacleHeight = 0.05, initialY = 1.0, offset = 0 } = {}) {
-  const activeSlots = state.getActiveSlotIndices();
-  if (activeSlots.length < 6)
+function GeneratePot(state, pool, { obstacleHeight = 0.05, initialY = 1.0, offset = 0 } = {}) {
+  const activeSlots = state.getActiveSlots();
+  if (activeSlots.length !== 6)
     return -1;
   for (let i = 0; i < 3; i++) {
-    state.slots[(i + offset) % activeSlots.length].obstacles.push(new HexagonObstacle(initialY, obstacleHeight));
+    state.slots[(i + offset) % 6].obstacles.push(pool.acquire(initialY, obstacleHeight));
   }
-  state.slots[(4 + offset) % activeSlots.length].obstacles.push(new HexagonObstacle(initialY, obstacleHeight));
+  state.slots[(4 + offset) % 6].obstacles.push(pool.acquire(initialY, obstacleHeight));
 
   return obstacleHeight + initialY;
 }
@@ -482,11 +520,12 @@ class HexagonTween {
 }
 
 class HexagonLevel1 {
-  constructor() {
+  constructor(obstaclePool) {
+    this.obstaclePool = obstaclePool;
     const renderConfig = new HexagonRenderConfig();
     this.state = new HexagonState(renderConfig);
-    this.slotColor1 = [0.9, 0.9, 0.9];
-    this.slotColor2 = [1, 1, 1];
+    this.slotColor1 = [0.7, 0.7, 0.7];
+    this.slotColor2 = [0.6, 0.6, 0.6];
 
     this.obstacleGens = [
       GenerateSpiral, GenerateReverseSpiral, GenerateRain, GenerateC,
@@ -494,22 +533,25 @@ class HexagonLevel1 {
     ];
     const fullRotationTime = 3000;
     const colorInterpolationDuration = 1000;
+    const colorSwapDuration = 1500;
     const timeBetweenObstacles = 0;
     const zoomPeriod = 1500;
     const { state } = this;
     this.tweens = [
       // interpolate slot colors
       new HexagonTween(colorInterpolationDuration, 0, (progress) => {
-        const p = progress;
-        const q = 1 - p;
+        const brightness = 1 - Math.abs(1 - 2 * progress) * 0.2;
         for (let i = 0; i < this.slotColor1.length; i++) {
-          state.renderConfig.slotColors[0][i] = p * this.slotColor1[i] + q * this.slotColor2[i];
-          state.renderConfig.slotColors[1][i] = q * this.slotColor1[i] + p * this.slotColor2[i];
+          state.renderConfig.slotColors[0][i] = brightness * this.slotColor1[i];
+          state.renderConfig.slotColors[1][i] = brightness * this.slotColor2[i];
         }
-        if (progress == 1) {
-          const swap = this.slotColor1;
+      }),
+      // swap slot colors
+      new HexagonTween(colorSwapDuration, 0, (progress) => {
+        if (progress === 1) {
+          const tmp = this.slotColor1;
           this.slotColor1 = this.slotColor2;
-          this.slotColor2 = swap;
+          this.slotColor2 = tmp;
         }
       }),
       // generate obstacles
@@ -520,7 +562,7 @@ class HexagonLevel1 {
           do {
             const genIdx = Math.floor(Math.random() * this.obstacleGens.length);
             const gen = this.obstacleGens[genIdx];
-            height = gen(state, opts);
+            height = gen(state, this.obstaclePool, opts);
           } while(height < 0);
           tween.duration = height / state.obstacleSpeed * HexagonConstants.targetTickTime;
         }
@@ -531,7 +573,7 @@ class HexagonLevel1 {
       }),
       // zoom
       new HexagonTween(zoomPeriod, 0, (progress) => {
-        const zoommand = (Math.abs(0.5 - progress) - 0.5) * 0.3;
+        const zoommand = (1 - Math.abs(1 - 2 * progress)) * 0.3;
         state.renderConfig.zoom = 1 + zoommand;
       })
     ];
@@ -540,11 +582,11 @@ class HexagonLevel1 {
   reset() {
     this.timeSinceRotationStart = 0;
 
-    const cursorColor = [0.5, 0.5, 0.5];
+    const cursorColor = [1, 1, 1];
     const cursorShadowColor = [0.3, 0.3, 0.3];
-    const innerHexagonColor = [1, 1, 1];
-    const outerHexagonColor = [0.5, 0.5, 0.5];
-    const obstacleColor = [0.5, 0.5, 0.5];
+    const innerHexagonColor = [0.5, 0.5, 0.5];
+    const outerHexagonColor = [1, 1, 1];
+    const obstacleColor = [1, 1, 1];
     const slotColors = [this.slotColor1.slice(0), this.slotColor2.slice(0)];
     this.state.renderConfig.cursorColor = cursorColor;
     this.state.renderConfig.cursorShadowColor = cursorShadowColor;
@@ -552,6 +594,8 @@ class HexagonLevel1 {
     this.state.renderConfig.outerHexagonColor = outerHexagonColor;
     this.state.renderConfig.obstacleColor = obstacleColor;
     this.state.renderConfig.slotColors = slotColors;
+    this.state.obstacleSpeed = 0.008;
+    this.state.cursorSpeed = 0.037;
   }
   tick(delta) {
     const { state } = this;
@@ -566,7 +610,8 @@ class HexagonLevel1 {
 // Wire up the model, graphics, input (, sound?)
 class HexagonGame {
   constructor(canvas) {
-    this.level = new HexagonLevel1();
+    this.obstaclePool = new HexagonObstaclePool();
+    this.level = new HexagonLevel1(this.obstaclePool);
     this.state = this.level.getState();
     this.renderer = new HexagonRenderer(canvas, this.state);
     this.controls = new HexagonControls(this, this.state, canvas);
@@ -575,7 +620,7 @@ class HexagonGame {
     this.playTime = 0;
 
     this.prevTime = performance.now();
-    this.boundTickCb = (...args) => this.tick(...args);
+    this.boundTickCb = (time) => this.tick(time);
     window.requestAnimationFrame(this.boundTickCb);
   }
   restart() {
@@ -583,6 +628,7 @@ class HexagonGame {
     this.timeSinceLastObstacle = 0;
     for (let s = 0; s < this.state.slots.length; s++) {
       const slot = this.state.slots[s];
+      this.obstaclePool.releaseAll(slot.obstacles);
       slot.obstacles.length = 0;
     }
     this.level.reset();
@@ -609,7 +655,7 @@ class HexagonGame {
           obstacle.distance -= state.obstacleSpeed * effect;
           // dispose of dead obstacles
           if (obstacle.distance + obstacle.height < 0) {
-            slot.obstacles.splice(o, 1);
+            this.obstaclePool.release(slot.obstacles.splice(o, 1)[0]);
             o--;
           }
         }
@@ -621,12 +667,12 @@ class HexagonGame {
       // check if we're dead
       if (!HexagonConstants.godMode) {
         const currentSlot = state.slots[state.getCurrentSlotIdx()];
-        const { cursorY } = HexagonConstants;
+        const { cursorY, cursorH } = HexagonConstants;
+        const cursorTip = cursorY + cursorH;
         for (let o = 0; o < currentSlot.obstacles.length; o++) {
           const obstacle = currentSlot.obstacles[o];
-          if (obstacle.distance <= cursorY && obstacle.distance + obstacle.height > cursorY) {
+          if (obstacle.distance <= cursorTip && obstacle.distance + obstacle.height > cursorTip)
             state.running = false;
-          }
         }
       }
       this.playTime += delta;
@@ -638,9 +684,8 @@ class HexagonGame {
     return this.playTime;
   }
   getFPS() {
-    if (this.frameTime === 0) {
+    if (this.frameTime === 0)
       return '?';
-    }
     return Math.round(1000 / this.frameTime);
   }
 }
