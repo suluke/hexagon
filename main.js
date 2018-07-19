@@ -131,7 +131,8 @@ class HexagonRenderer {
     gl.clear(gl.COLOR_BUFFER_BIT);
 
     const aspectLoc = gl.getUniformLocation(program, 'aspect');
-    gl.uniform1f(aspectLoc, gl.canvas.width / gl.canvas.height);
+    const aspect = gl.canvas.width / gl.canvas.height;
+    gl.uniform1f(aspectLoc, aspect);
     const rotationLoc = gl.getUniformLocation(program, 'rotation');
     gl.uniform1f(rotationLoc, config.rotation);
     const zLoc = gl.getUniformLocation(program, 'z');
@@ -140,8 +141,12 @@ class HexagonRenderer {
     gl.uniform2f(camLoc, ...config.cameraOffset);
     const projLoc = gl.getUniformLocation(program, 'proj');
     const proj = this.projection;
-    proj[0 * 4 + 0] = config.zoom;
-    proj[1 * 4 + 1] = config.zoom;
+    // The longer dimension will see the full viewport - which is a 1x1 square.
+    // Since by default we project to have x coordinates go from -1 to 1,
+    // we only need to zoom if y is longer - i.e. aspect is less than zero
+    const aspectZoom = aspect >= 1 ? 1 : 1 / aspect;
+    proj[0 * 4 + 0] = config.zoom * aspectZoom;
+    proj[1 * 4 + 1] = config.zoom * aspectZoom;
     gl.uniformMatrix4fv(projLoc, false, proj);
     
     // render slots
