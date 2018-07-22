@@ -93,7 +93,8 @@ class HexagonState {
 
 /// All things graphics
 class HexagonRenderer {
-  constructor(canvas, gamestate) {
+  constructor(game, canvas) {
+    this.game = game;
     canvas.width = canvas.clientWidth;
     canvas.height = canvas.clientHeight;
     const gl = canvas.getContext('webgl', { alpha: false, antialias: true, depth: false });
@@ -101,8 +102,6 @@ class HexagonRenderer {
       throw new Error('WebGL not working');
     }
     this.gl = gl;
-    this.gamestate = gamestate;
-    this.config = gamestate.renderConfig;
     this.program = this.createProgram();
     this.vertexBuffer = gl.createBuffer();
     this.projection = [
@@ -126,7 +125,9 @@ class HexagonRenderer {
   }
 
   render() {
-    const { config, gamestate, gl, program } = this;
+    const { gl, program } = this;
+    const gamestate = this.game.getState();
+    const config = gamestate.renderConfig;
     gl.clearColor(0.0, 0.0, 0.0, 1.0);
     gl.clear(gl.COLOR_BUFFER_BIT);
 
@@ -196,7 +197,8 @@ class HexagonRenderer {
   }
 
   updateVertexBuffer() {
-    const { gamestate, gl } = this;
+    const { gl } = this;
+    const gamestate = this.game.getState();
     const vertices = [];
     const { cursorH, cursorW, cursorY, innerHexagonY, outerHexagonY } = HexagonConstants;
     // create outer hexagon vertices
@@ -325,11 +327,10 @@ class HexagonRenderer {
 
 /// All things input
 class HexagonControls {
-  constructor(game, gamestate, canvas) {
+  constructor(game, canvas) {
     canvas.tabIndex = 1000;
     canvas.focus();
     this.game = game;
-    this.gamestate = gamestate;
     this.keysDown = new Set();
     this.touchLeft = false;
     this.touchRight = false;
@@ -376,7 +377,8 @@ class HexagonControls {
     canvas.addEventListener("touchend", touchEnd);
   }
   tick(delta) {
-    const { gamestate, keysDown } = this;
+    const { keysDown } = this;
+    const gamestate = this.game.getState();
     if (!gamestate.running) {
       return;
     }
@@ -527,9 +529,8 @@ class HexagonGame {
   constructor(canvas, level, obstaclePool) {
     this.level = level;
     this.obstaclePool = obstaclePool;
-    this.state = this.level.getState();
-    this.renderer = new HexagonRenderer(canvas, this.state);
-    this.controls = new HexagonControls(this, this.state, canvas);
+    this.renderer = new HexagonRenderer(this, canvas);
+    this.controls = new HexagonControls(this, canvas);
     this.timeSinceLastObstacle = 0;
     this.frameTime = 0;
     this.playTime = 0;
@@ -539,18 +540,19 @@ class HexagonGame {
     window.requestAnimationFrame(this.boundTickCb);
   }
   restart() {
+    const state = this.getState();
     this.playTime = 0;
     this.timeSinceLastObstacle = 0;
-    for (let s = 0; s < this.state.slots.length; s++) {
-      const slot = this.state.slots[s];
+    for (let s = 0; s < state.slots.length; s++) {
+      const slot = state.slots[s];
       this.obstaclePool.releaseAll(slot.obstacles);
       slot.obstacles.length = 0;
     }
     this.level.reset();
-    this.state.running = true;
+    state.running = true;
   }
   tick(time) {
-    const { state } = this;
+    const state = this.getState();
     const delta = time - this.prevTime;
     this.prevTime = time;
     // calculate low-pass-filtered frameTime
@@ -594,7 +596,9 @@ class HexagonGame {
     }
     window.requestAnimationFrame(this.boundTickCb);
   }
-
+  getState() {
+    return this.level.getState();
+  }
   getPlayTime() {
     return this.playTime;
   }
