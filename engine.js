@@ -526,14 +526,16 @@ class HexagonTween {
 
 // Wire up the model, graphics, input (, sound?)
 class HexagonGame {
-  constructor(canvas, level, obstaclePool) {
-    this.level = level;
+  constructor(canvas, obstaclePool) {
+    this.level = null;
     this.obstaclePool = obstaclePool;
     this.renderer = new HexagonRenderer(this, canvas);
     this.controls = new HexagonControls(this, canvas);
     this.timeSinceLastObstacle = 0;
     this.frameTime = 0;
     this.playTime = 0;
+    const renderConfig = new HexagonRenderConfig();
+    this.state = new HexagonState(renderConfig);
 
     this.prevTime = performance.now();
     this.boundTickCb = (time) => this.tick(time);
@@ -561,7 +563,8 @@ class HexagonGame {
     // move user according to last frame's state
     this.controls.tick(delta);
     // apply potential rendering and game behavior changes
-    this.level.tick(delta);
+    if (this.level)
+      this.level.tick(delta);
     // update obstacles
     if (state.running) {
       const effect = delta / HexagonConstants.targetTickTime;
@@ -597,7 +600,7 @@ class HexagonGame {
     window.requestAnimationFrame(this.boundTickCb);
   }
   getState() {
-    return this.level.getState();
+    return this.state;
   }
   getPlayTime() {
     return this.playTime;
@@ -606,5 +609,8 @@ class HexagonGame {
     if (this.frameTime === 0)
       return '?';
     return Math.round(1000 / this.frameTime);
+  }
+  setLevel(level) {
+    this.level = level;
   }
 }

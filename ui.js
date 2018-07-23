@@ -38,8 +38,6 @@ class HexagonLevel1 extends HexagonLevel {
     this.secondsDisplay = this.elm.querySelector('.hexagon-time-seconds');
     this.millisDisplay = this.elm.querySelector('.hexagon-time-millis');
 
-    const renderConfig = new HexagonRenderConfig();
-    this.state = new HexagonState(renderConfig);
     this.slotColor1 = [0.7, 0.7, 0.7];
     this.slotColor2 = [0.6, 0.6, 0.6];
 
@@ -52,7 +50,7 @@ class HexagonLevel1 extends HexagonLevel {
     const colorSwapDuration = 1500;
     const timeBetweenObstacles = 0;
     const zoomPeriod = 1500;
-    const { state } = this;
+    const state = this.app.getGame().getState();
     this.tweens = [
       // interpolate slot colors
       new HexagonTween(colorInterpolationDuration, 0, (progress) => {
@@ -140,9 +138,7 @@ class HexagonApp {
     container.appendChild(this.elm);
     this.canvas = this.elm.querySelector('.hexagon-viewport');
     this.obstaclePool = new HexagonObstaclePool();
-    this.level = new HexagonLevel1(this);
-    this.game = new HexagonGame(this.canvas, this.level, this.obstaclePool);
-    this.level.enter();
+    this.game = new HexagonGame(this.canvas, this.obstaclePool);
     const restartIfStopped = () => {
       if (!this.level.getState().running)
         this.game.restart();
@@ -153,7 +149,27 @@ class HexagonApp {
       if (event.code === 'Space')
         restartIfStopped();
     });
+
+    this.level = new HexagonLevel1(this);
+    this.changeScreen(this.level);
   }
+  changeScreen(screen) {
+    this.game.setLevel(screen);
+    screen.enter();
+  }
+  getFPS() {
+    return this.game.getFPS();
+  }
+  getGame() {
+    return this.game;
+  }
+  getUIContainer() {
+    return this.elm;
+  }
+  getObstaclePool() {
+    return this.obstaclePool;
+  }
+
   static parseHtml(html) {
     // eslint-disable-next-line no-param-reassign
     html = html.trim();
@@ -206,17 +222,5 @@ class HexagonApp {
     }
 
     return element;
-  }
-  getFPS() {
-    return this.game.getFPS();
-  }
-  getGame() {
-    return this.game;
-  }
-  getUIContainer() {
-    return this.elm;
-  }
-  getObstaclePool() {
-    return this.obstaclePool;
   }
 }
