@@ -1,6 +1,7 @@
 /// Interface of HexagonScreens
 class HexagonScreen {
   constructor(app) {
+    this.app = app;
   }
   enter() {
     throw new Error('Needs to be overwritten by derived implementation');
@@ -8,24 +9,22 @@ class HexagonScreen {
   leave() {
     throw new Error('Needs to be overwritten by derived implementation');
   }
+  getLevel() {
+    throw new Error('Needs to be overwritten by derived implementation');
+  }
 }
 
 /// Interface of HexagonLevels
-// FIXME: extends HexagonScreen just a hack until we properly separate code
-class HexagonLevel extends HexagonScreen {
-  getState() {
-    throw new Error('Needs to be overwritten by derived implementation');
-  }
+class HexagonLevel {
   tick(delta) {
     throw new Error('Needs to be overwritten by derived implementation');
   }
 }
 
-class HexagonLevel1 extends HexagonLevel {
+class HexagonLevel1 extends HexagonScreen {
   constructor(app) {
-    super();
-    this.app = app;
-    this.obstaclePool = this.app.getObstaclePool();
+    super(app);
+    this.obstaclePool = app.getObstaclePool();
     this.elm = HexagonApp.parseHtml(`
       <div class="hexagon-screen-1">
         <span class="hexagon-time-legend">time</span>
@@ -34,7 +33,7 @@ class HexagonLevel1 extends HexagonLevel {
         </span>
       </div>
     `);
-    this.app.getUIContainer().appendChild(this.elm);
+    app.getUIContainer().appendChild(this.elm);
     this.secondsDisplay = this.elm.querySelector('.hexagon-time-seconds');
     this.millisDisplay = this.elm.querySelector('.hexagon-time-millis');
 
@@ -50,7 +49,7 @@ class HexagonLevel1 extends HexagonLevel {
     const colorSwapDuration = 1500;
     const timeBetweenObstacles = 0;
     const zoomPeriod = 1500;
-    const state = this.app.getGame().getState();
+    const state = app.getGame().getState();
     this.tweens = [
       // interpolate slot colors
       new HexagonTween(colorInterpolationDuration, 0, (progress) => {
@@ -100,6 +99,12 @@ class HexagonLevel1 extends HexagonLevel {
       this.millisDisplay.textContent = ('' + Math.floor((time - Math.floor(time / 1000) * 1000) / 10)).padStart(2, '0');
     }, 10);
   }
+  leave() {
+
+  }
+  getLevel() {
+    return this;
+  }
   reset() {
     this.timeSinceRotationStart = 0;
 
@@ -109,22 +114,20 @@ class HexagonLevel1 extends HexagonLevel {
     const outerHexagonColor = [1, 1, 1];
     const obstacleColor = [1, 1, 1];
     const slotColors = [this.slotColor1.slice(0), this.slotColor2.slice(0)];
-    this.state.renderConfig.cursorColor = cursorColor;
-    this.state.renderConfig.cursorShadowColor = cursorShadowColor;
-    this.state.renderConfig.innerHexagonColor = innerHexagonColor;
-    this.state.renderConfig.outerHexagonColor = outerHexagonColor;
-    this.state.renderConfig.obstacleColor = obstacleColor;
-    this.state.renderConfig.slotColors = slotColors;
-    this.state.obstacleSpeed = 0.008;
-    this.state.cursorSpeed = 0.037;
+    const state = this.app.getGame().getState();
+    state.renderConfig.cursorColor = cursorColor;
+    state.renderConfig.cursorShadowColor = cursorShadowColor;
+    state.renderConfig.innerHexagonColor = innerHexagonColor;
+    state.renderConfig.outerHexagonColor = outerHexagonColor;
+    state.renderConfig.obstacleColor = obstacleColor;
+    state.renderConfig.slotColors = slotColors;
+    state.obstacleSpeed = 0.008;
+    state.cursorSpeed = 0.037;
   }
   tick(delta) {
     const { state } = this;
     for (let i = 0; i < this.tweens.length; i++)
       this.tweens[i].tick(delta);
-  }
-  getState() {
-    return this.state;
   }
 }
 
@@ -140,7 +143,7 @@ class HexagonApp {
     this.obstaclePool = new HexagonObstaclePool();
     this.game = new HexagonGame(this.canvas, this.obstaclePool);
     const restartIfStopped = () => {
-      if (!this.level.getState().running)
+      if (!this.game.getState().running)
         this.game.restart();
     };
     this.canvas.addEventListener("mousedown", restartIfStopped);

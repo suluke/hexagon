@@ -553,6 +553,42 @@ class HexagonGame {
     this.level.reset();
     state.running = true;
   }
+  update(distance) {
+    const state = this.getState();
+    const currentSlotIdx = state.getCurrentSlotIdx();
+    const { cursorY, cursorH } = HexagonConstants;
+    const cursorTip = cursorY + cursorH;
+    let revertBy = 0;
+    for (let s = 0; s < state.slots.length; s++) {
+      const slot = state.slots[s];
+      for (let o = 0; o < slot.obstacles.length; o++) {
+        const obstacle = slot.obstacles[o];
+        obstacle.distance -= distance;
+        const playerHit = s === currentSlotIdx
+                          && obstacle.distance <= cursorTip
+                          && obstacle.distance + distance > cursorTip;
+        if (!HexagonConstants.godMode && playerHit)
+          revertBy = cursorTip - obstacle.distance;
+        else if (obstacle.distance + obstacle.height < 0) {
+          // dispose of dead obstacles
+          this.obstaclePool.release(slot.obstacles.splice(o, 1)[0]);
+          o--;
+        }
+      }
+    }
+    if (revertBy !== 0) {
+      state.running = false;
+      for (let s = 0; s < state.slots.length; s++) {
+        const slot = state.slots[s];
+        for (let o = 0; o < slot.obstacles.length; o++) {
+          const obstacle = slot.obstacles[o];
+          obstacle.distance += revertBy;
+        }
+      }
+      return false;
+    }
+    return true;
+  }
   tick(time) {
     const state = this.getState();
     const delta = time - this.prevTime;
@@ -565,38 +601,15 @@ class HexagonGame {
     // apply potential rendering and game behavior changes
     if (this.level)
       this.level.tick(delta);
-    // update obstacles
+    // update game
     if (state.running) {
       const effect = delta / HexagonConstants.targetTickTime;
-      for (let s = 0; s < state.slots.length; s++) {
-        const slot = state.slots[s];
-        for (let o = 0; o < slot.obstacles.length; o++) {
-          const obstacle = slot.obstacles[o];
-          obstacle.distance -= state.obstacleSpeed * effect;
-          // dispose of dead obstacles
-          if (obstacle.distance + obstacle.height < 0) {
-            this.obstaclePool.release(slot.obstacles.splice(o, 1)[0]);
-            o--;
-          }
-        }
-      }
+      const distance = state.obstacleSpeed * effect;
+      if (this.update(distance))
+        this.playTime += delta;
     }
     // render new frame
     this.renderer.render(delta);
-    if (state.running) {
-      // check if we're dead
-      if (!HexagonConstants.godMode) {
-        const currentSlot = state.slots[state.getCurrentSlotIdx()];
-        const { cursorY, cursorH } = HexagonConstants;
-        const cursorTip = cursorY + cursorH;
-        for (let o = 0; o < currentSlot.obstacles.length; o++) {
-          const obstacle = currentSlot.obstacles[o];
-          if (obstacle.distance <= cursorTip && obstacle.distance + obstacle.height > cursorTip)
-            state.running = false;
-        }
-      }
-      this.playTime += delta;
-    }
     window.requestAnimationFrame(this.boundTickCb);
   }
   getState() {
