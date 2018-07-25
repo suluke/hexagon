@@ -68,7 +68,8 @@ class HexagonLevel1 extends HexagonScreen {
 
     this.obstacleGens = [
       GenerateSpiral, GenerateReverseSpiral, GenerateRain, GenerateC,
-      GenerateLadder, GenerateDoubleTurn, GenerateBat, GeneratePot
+      GenerateLadder, GenerateDoubleTurn, GenerateReverseDoubleTurn,
+      GenerateBat, GeneratePot
     ];
     const fullRotationTime = 3000;
     const colorInterpolationDuration = 1000;

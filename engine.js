@@ -442,7 +442,7 @@ function GenerateReverseSpiral(state, pool, options) {
   options.reverse = !options.reverse;
   return GenerateSpiral(state, pool, options);
 }
-function GenerateRain(state, pool, { obstacleHeight = 0.05, lineDist = 0.15, numLines = 5, initialY = 1.0 } = {}) {
+function GenerateRain(state, pool, { obstacleHeight = 0.03, lineDist = 0.15, numLines = 5, initialY = 1.0 } = {}) {
   let y = initialY;
   for (let line = 0; line < numLines; line++) {
     for (let s = 0; s < state.slots.length; s++) {
@@ -485,11 +485,51 @@ function GenerateLadder(state, pool, { obstacleHeight = 0.05, initialY = 1.0, nu
   y -= stepDist;
   return y;
 }
-function GenerateDoubleTurn(state, pool, opts = {}) {
-  return -1;
+function GenerateDoubleTurn(state, pool, { startSlot = 0, initialY = 1.0, obstacleHeight = 0.03, corridorWidth = 0.18, reverse = false }) {
+  const activeSlots = state.getActiveSlots();
+  if (activeSlots.length !== 6)
+    return -1;
+  const height = 3 * obstacleHeight + 2 * corridorWidth;
+  activeSlots[startSlot].obstacles.push(pool.acquire(initialY, height));
+  let y = initialY;
+  let sign = reverse ? -1 : 1;
+  for (let i = 0; i < 3; i++) {
+    for (let s = 1; s < 5; s++) {
+      const slot = activeSlots[(startSlot + s * sign + 6) % 6];
+      slot.obstacles.push(pool.acquire(y, obstacleHeight));
+    }
+    sign = 0 - sign;
+    y += obstacleHeight + corridorWidth;
+  }
+  return height + initialY;
 }
-function GenerateBat(state, pool, opts = {}) {
-  return -1;
+function GenerateReverseDoubleTurn(state, pool, options) {
+  options.reverse = !options.reverse;
+  return GenerateDoubleTurn(state, pool, options);
+}
+function GenerateBat(state, pool, { startSlot = 0, initialY = 1.0 }) {
+  // TODO parameter support
+  const activeSlots = state.getActiveSlots();
+  if (activeSlots.length !== 6)
+    return -1;
+  const ss = startSlot + 6;
+  let y = initialY;
+  activeSlots[(ss + 1) % 6].obstacles.push(pool.acquire(y, 0.05));
+  activeSlots[(ss - 1) % 6].obstacles.push(pool.acquire(y, 0.05));
+  y += 0.02;
+  activeSlots[(ss + 2) % 6].obstacles.push(pool.acquire(y, 0.03));
+  activeSlots[(ss - 2) % 6].obstacles.push(pool.acquire(y, 0.03));
+  y += 0.1;
+  activeSlots[(ss + 3) % 6].obstacles.push(pool.acquire(y, 0.09));
+  y += 0.04;
+  activeSlots[(ss + 2) % 6].obstacles.push(pool.acquire(y, 0.03));
+  activeSlots[(ss - 2) % 6].obstacles.push(pool.acquire(y, 0.03));
+  y += 0.1;
+  activeSlots[(ss + 1) % 6].obstacles.push(pool.acquire(y, 0.05));
+  activeSlots[(ss - 1) % 6].obstacles.push(pool.acquire(y, 0.05));
+  y += 0.05;
+  activeSlots[startSlot].obstacles.push(pool.acquire(initialY, y - initialY));
+  return y;
 }
 function GeneratePot(state, pool, { obstacleHeight = 0.05, initialY = 1.0, offset = 0 } = {}) {
   const activeSlots = state.getActiveSlots();
