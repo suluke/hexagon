@@ -21,6 +21,32 @@ class HexagonLevel {
   }
 }
 
+class HexagonTitleScreen extends HexagonScreen {
+  constructor(app) {
+    super(app);
+    this.elm = HexagonApp.parseHtml(`
+      <div class="hexagon-screen-title">
+        <button type="button" class="hexagon-achievements-btn">achievements</button>
+        <button type="button" class="hexagon-credits-btn">credits</button>
+        <h1><span>open</span><span>hexagon</span></h1>
+        <span class="hexagon-tap-to-start">tap to start</span>
+      </div>
+    `);
+    this.elm.addEventListener('click', () => {
+      this.app.changeScreen('level-1');
+    });
+  }
+  enter() {
+    this.app.getUIContainer().appendChild(this.elm);
+  }
+  leave() {
+    this.elm.remove();
+  }
+  getLevel() {
+    return null;
+  }
+}
+
 class HexagonLevel1 extends HexagonScreen {
   constructor(app) {
     super(app);
@@ -33,9 +59,9 @@ class HexagonLevel1 extends HexagonScreen {
         </span>
       </div>
     `);
-    app.getUIContainer().appendChild(this.elm);
     this.secondsDisplay = this.elm.querySelector('.hexagon-time-seconds');
     this.millisDisplay = this.elm.querySelector('.hexagon-time-millis');
+    this.timeUpdater = 0;
 
     this.slotColor1 = [0.7, 0.7, 0.7];
     this.slotColor2 = [0.6, 0.6, 0.6];
@@ -93,14 +119,19 @@ class HexagonLevel1 extends HexagonScreen {
     this.reset();
   }
   enter() {
-    const timeUpdater = window.setInterval(() => {
+    if (this.timeUpdater !== 0)
+      throw new Error("Screen lifecycle should assert that timeUpdater is inactive on enter");
+    this.app.getUIContainer().appendChild(this.elm);
+    this.timeUpdater = window.setInterval(() => {
       const time = this.app.getGame().getPlayTime();
       this.secondsDisplay.textContent = Math.floor(time / 1000);
       this.millisDisplay.textContent = ('' + Math.floor((time - Math.floor(time / 1000) * 1000) / 10)).padStart(2, '0');
     }, 10);
   }
   leave() {
-
+    this.elm.remove();
+    window.clearInterval(this.timeUpdater);
+    this.timeUpdater = 0;
   }
   getLevel() {
     return this;
@@ -135,11 +166,13 @@ class HexagonApp {
   constructor(container) {
     this.elm = HexagonApp.parseHtml(`
       <div class="hexagon-app">
+        <div class="hexagon-ui"></div>
         <canvas class="hexagon-viewport"></canvas>
       </div>
     `);
     container.appendChild(this.elm);
     this.canvas = this.elm.querySelector('.hexagon-viewport');
+    this.uiContainer = this.elm.querySelector('.hexagon-ui');
     this.obstaclePool = new HexagonObstaclePool();
     this.game = new HexagonGame(this.canvas, this.obstaclePool);
     const restartIfStopped = () => {
@@ -153,12 +186,24 @@ class HexagonApp {
         restartIfStopped();
     });
 
-    this.level = new HexagonLevel1(this);
-    this.changeScreen(this.level);
+    this.screens = {
+      'title': new HexagonTitleScreen(this),
+      'level-1': new HexagonLevel1(this)
+    };
+    this.screen = null;
+    this.changeScreen('title');
   }
-  changeScreen(screen) {
-    this.game.setLevel(screen);
+  changeScreen(screenName) {
+    if (!this.screens[screenName])
+      throw new Error(`Invalid screen name: ${screenName}`);
+    if (this.screen)
+      this.screen.leave();
+    const screen = this.screens[screenName];
+    this.game.setLevel(screen.getLevel());
+    this.game.restart();
     screen.enter();
+    this.screen = screen;
+    this.canvas.focus();
   }
   getFPS() {
     return this.game.getFPS();
@@ -167,7 +212,7 @@ class HexagonApp {
     return this.game;
   }
   getUIContainer() {
-    return this.elm;
+    return this.uiContainer;
   }
   getObstaclePool() {
     return this.obstaclePool;

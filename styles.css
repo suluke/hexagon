@@ -1,27 +1,98 @@
+/**************************************************
+ *          Global styles and resets              *
+ **************************************************/
 @font-face {
   font-family: "Bump It Up";
   src: url("bump_it_up.ttf") format("opentype");
 }
-html, body, .hexagon-app, .hexagon-viewport {
+html, body, .hexagon-app, .hexagon-ui, .hexagon-viewport {
   width: 100%;
   height: 100%;
   margin: 0;
   padding: 0;
   font-family: "Bump It Up";
+  text-transform: uppercase;
+}
+button {
+  background: none;
+  border: none;
+  outline: none;
+  font-family: inherit;
 }
 
-.hexagon-screen-1 {
+/**************************************************
+ *    Support for ui elements on top of canvas    *
+ *      maintaining proper event delegation       *
+ **************************************************/
+.hexagon-viewport {
   position: absolute;
-  display: block;
+  top: 0;
+  left: 0;
+}
+div[class^="hexagon-screen-"], div[class*=" hexagon-screen-"] {
+  display: inline-block;
+  width: 100%;
+  height: 100%;
+}
+div[class^="hexagon-screen-"] > *, div[class*=" hexagon-screen-"] > * {
+  /* UI elements need to be positioned absolutely
+     for this to work */
+  z-index: 10;
+}
+
+/**************************************************
+ *                  Title Screen                  *
+ **************************************************/
+.hexagon-screen-title {
+  color: white;
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 10;
+}
+.hexagon-screen-title .hexagon-achievements-btn {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+.hexagon-screen-title .hexagon-credits-btn {
+  position: absolute;
   top: 0;
   right: 0;
+}
+.hexagon-screen-title h1 {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -90%);
+  white-space: pre;
+}
+.hexagon-screen-title h1 > span:first-child:after {
+  content: "\A";
+}
+.hexagon-screen-title h1 > span:nth-child(1) {
+  font-size: 15vh;
+}
+.hexagon-screen-title h1 > span:nth-child(2) {
+  font-size: 11vh;
+  margin-left: 15vh;
+}
+.hexagon-screen-title .hexagon-tap-to-start {
+  position: absolute;
+  top: 70%;
+  left: 50%;
+  transform: translate(-50%);
+}
+
+/**************************************************
+ *                Level One Screen                *
+ **************************************************/
+.hexagon-screen-1 {
   text-align: right;
   vertical-align: top;
-  text-transform: uppercase;
   font-size: 0;
   color: white;
 }
-
 .hexagon-screen-1 .hexagon-time-legend {
   font-size: 5vh;
   line-height: 100%;
@@ -29,7 +100,6 @@ html, body, .hexagon-app, .hexagon-viewport {
   background-color: black;
   position: relative;
   padding-right: 5vh;
-  z-index: 10;
 }
 .hexagon-screen-1 .hexagon-time-legend:before {
   content: "";

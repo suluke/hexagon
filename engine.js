@@ -328,7 +328,7 @@ class HexagonRenderer {
 /// All things input
 class HexagonControls {
   constructor(game, canvas) {
-    canvas.tabIndex = 1000;
+    canvas.tabIndex = 0;
     canvas.focus();
     this.game = game;
     this.keysDown = new Set();
@@ -342,6 +342,7 @@ class HexagonControls {
     });
     let isDown = false;
     const touchDown = (event) => {
+      canvas.focus();
       event.preventDefault();
       if (event.changedTouches)
         event = event.changedTouches[0];
@@ -550,7 +551,8 @@ class HexagonGame {
       this.obstaclePool.releaseAll(slot.obstacles);
       slot.obstacles.length = 0;
     }
-    this.level.reset();
+    if (this.level)
+      this.level.reset();
     state.running = true;
   }
   update(distance) {
