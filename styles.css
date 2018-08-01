@@ -84,6 +84,24 @@ div[class^="hexagon-screen-"] > *, div[class*=" hexagon-screen-"] > * {
   transform: translate(-50%);
 }
 
+
+
+/**************************************************
+ *               Directional Buttons              *
+ **************************************************/
+.hexagon-directional-button {
+  position: absolute;
+  z-index: 20;
+}
+.hexagon-directional-button path:nth-child(1) {
+  fill: black;
+}
+.hexagon-directional-button path:nth-child(2) {
+  stroke: white;
+  fill: #ddd;
+  stroke-width: 5px;
+}
+
 /**************************************************
  *                Level One Screen                *
  **************************************************/

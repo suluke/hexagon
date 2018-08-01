@@ -14,6 +14,17 @@ class HexagonScreen {
   }
 }
 
+class HexagonArrowButton {
+  constructor() {
+    this.elm = HexagonApp.parseSvg(`
+      <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="hexagon-directional-button" viewbox="0 0 100 100" preserveAspectRatio="none">
+        <path class="" d="M5,15 L65,15 L85,95 L25,95z"></path>
+        <path class="" d="M10,10 L70,10 L90,90 L30,90z"></path>
+      </svg>
+    `);
+  }
+}
+
 /// Interface of HexagonLevels
 class HexagonLevel {
   tick(delta) {
@@ -219,6 +230,12 @@ class HexagonApp {
     return this.obstaclePool;
   }
 
+  /// Parse html strings containing a single parent tag of arbitrary type
+  /// into a corresponding DOM Node including all child tags of the input.
+  ///
+  /// NOTE: We are aware of DOMParser. However, it is not fool-proof.
+  /// I.e., tags that require proper nesting (e.g. tr) will not work with
+  /// DOMParser. Refer to https://stackoverflow.com/a/33321421/1468532
   static parseHtml(html) {
     // eslint-disable-next-line no-param-reassign
     html = html.trim();
@@ -271,5 +288,17 @@ class HexagonApp {
     }
 
     return element;
+  }
+  static parseSvg(svg) {
+    svg = svg.trim();
+    let depth = 0;
+    if (!svg.startsWith('<svg ') && !svg.startsWith('<svg>')) {
+      svg = `<svg>${svg}</svg>`;
+      depth = 1;
+    }
+    let elm = new DOMParser().parseFromString(svg, 'image/svg+xml').documentElement;
+    while(depth-- > 0)
+      elm = elm.lastChild;
+    return elm;
   }
 }
