@@ -17,11 +17,18 @@ class HexagonScreen {
 class HexagonArrowButton {
   constructor() {
     this.elm = HexagonApp.parseSvg(`
-      <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="hexagon-directional-button" viewbox="0 0 100 100" preserveAspectRatio="none">
-        <path class="" d="M5,15 L65,15 L85,95 L25,95z"></path>
-        <path class="" d="M10,10 L70,10 L90,90 L30,90z"></path>
+      <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="hexagon-directional-button" viewBox="0 0 100 100" preserveAspectRatio="none">
+        <rect x="0" y="5" width="95" height="95"></rect>
+        <rect x="5" y="0" width="95" height="95"></rect>
+        <path d="M20,50 L35,15 L35,30 L80,30 L80,70 L35,70 L35,85z" fill="black"></path>
       </svg>
     `);
+  }
+  appendTo(elm) {
+    elm.appendChild(this.elm);
+  }
+  addClass(clazz) {
+    this.elm.classList.add(clazz);
   }
 }
 
@@ -37,12 +44,16 @@ class HexagonTitleScreen extends HexagonScreen {
     super(app);
     this.elm = HexagonApp.parseHtml(`
       <div class="hexagon-screen-title">
-        <button type="button" class="hexagon-achievements-btn">achievements</button>
-        <button type="button" class="hexagon-credits-btn">credits</button>
-        <h1><span>open</span><span>hexagon</span></h1>
-        <span class="hexagon-tap-to-start">tap to start</span>
+        <h1><span>libre</span><span>hexagon</span></h1>
+        <span class="hexagon-title-action">tap to start</span>
       </div>
     `);
+    this.leftBtn = new HexagonArrowButton();
+    this.leftBtn.addClass('left');
+    this.leftBtn.appendTo(this.elm);
+    this.rightBtn = new HexagonArrowButton();
+    this.rightBtn.addClass('right');
+    this.rightBtn.appendTo(this.elm);
     this.elm.addEventListener('click', () => {
       this.app.changeScreen('level-1');
     });

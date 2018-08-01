@@ -41,6 +41,24 @@ div[class^="hexagon-screen-"] > *, div[class*=" hexagon-screen-"] > * {
 }
 
 /**************************************************
+ *               Directional Buttons              *
+ **************************************************/
+.hexagon-directional-button {
+  position: absolute;
+  z-index: 20;
+  width: 30vh;
+  height: 20vh;
+}
+.hexagon-directional-button *:nth-child(1) {
+  fill: black;
+}
+.hexagon-directional-button *:nth-child(2) {
+  stroke: white;
+  fill: #ddd;
+  stroke-width: 5px;
+}
+
+/**************************************************
  *                  Title Screen                  *
  **************************************************/
 .hexagon-screen-title {
@@ -49,16 +67,6 @@ div[class^="hexagon-screen-"] > *, div[class*=" hexagon-screen-"] > * {
   top: 0;
   left: 0;
   z-index: 10;
-}
-.hexagon-screen-title .hexagon-achievements-btn {
-  position: absolute;
-  top: 0;
-  left: 0;
-}
-.hexagon-screen-title .hexagon-credits-btn {
-  position: absolute;
-  top: 0;
-  right: 0;
 }
 .hexagon-screen-title h1 {
   position: absolute;
@@ -77,29 +85,21 @@ div[class^="hexagon-screen-"] > *, div[class*=" hexagon-screen-"] > * {
   font-size: 11vh;
   margin-left: 15vh;
 }
-.hexagon-screen-title .hexagon-tap-to-start {
+.hexagon-screen-title .hexagon-title-action {
   position: absolute;
   top: 70%;
   left: 50%;
   transform: translate(-50%);
 }
-
-
-
-/**************************************************
- *               Directional Buttons              *
- **************************************************/
-.hexagon-directional-button {
-  position: absolute;
-  z-index: 20;
+.hexagon-screen-title .hexagon-directional-button.left {
+  left: 20vh;
+  bottom: 20vh;
+  transform: skew(20deg);
 }
-.hexagon-directional-button path:nth-child(1) {
-  fill: black;
-}
-.hexagon-directional-button path:nth-child(2) {
-  stroke: white;
-  fill: #ddd;
-  stroke-width: 5px;
+.hexagon-screen-title .hexagon-directional-button.right {
+  right: 20vh;
+  bottom: 20vh;
+  transform: scale(-1, 1) skew(20deg);
 }
 
 /**************************************************
