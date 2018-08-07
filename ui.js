@@ -122,6 +122,8 @@ class HexagonLevel1 extends HexagonScreen {
     const timeBetweenObstacles = 0;
     const zoomPeriod = 150;
     const gamestate = app.getGame().getState();
+    this.music = app.getGame().getSoundManager().addSound('sound/lukas_hexagon3.mp3');
+    this.music.setLooping(true);
     this.tweens = [
       // interpolate slot colors
       new HexagonTween(colorInterpolationDuration, 0, null, (progress) => {
@@ -209,10 +211,14 @@ class HexagonLevel1 extends HexagonScreen {
     state.renderConfig.lookAt = [0, 0];
     state.obstacleSpeed = 0.008;
     state.cursorSpeed = 0.037;
+    this.music.play();
   }
   tick(delta) {
     for (let i = 0; i < this.tweens.length; i++)
       this.tweens[i].tick(delta);
+  }
+  onStop() {
+    this.music.pause();
   }
 }
 
@@ -228,7 +234,7 @@ class HexagonApp {
     this.canvas = this.elm.querySelector('.hexagon-viewport');
     this.uiContainer = this.elm.querySelector('.hexagon-ui');
     this.obstaclePool = new HexagonObstaclePool();
-    this.game = new HexagonGame(this.canvas, this.obstaclePool);
+    this.game = new HexagonGame(this.canvas, this.elm, this.obstaclePool);
     const restartIfStopped = () => {
       if (!this.game.getState().running)
         this.game.restart();

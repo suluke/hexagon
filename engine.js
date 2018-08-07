@@ -429,6 +429,41 @@ class HexagonControls {
   }
 }
 
+class HexagonSound {
+  constructor(container) {
+    this.container = container;
+    this.sounds = [];
+  }
+  addSound(src) {
+    class Sound {
+      constructor(src, parentElm) {
+        this.elm = document.createElement("audio");
+        this.elm.src = src;
+        this.elm.setAttribute("preload", "auto");
+        this.elm.setAttribute("controls", "none");
+        this.elm.style.display = "none";
+        parentElm.appendChild(this.elm);
+      }
+      play() {
+        this.elm.play();
+      }
+      pause() {
+        this.elm.pause();
+      }
+      stop() {
+        this.elm.pause();
+        this.elm.currentTime = 0;
+      }
+      setLooping(loop) {
+        this.elm.loop = loop;
+      }
+    }
+    const sound = new Sound(src, this.container);
+    this.sounds.push(sound);
+    return sound;
+  }
+}
+
 // begin obstacle generators
 // Reference: http://hexagon.wikia.com/wiki/Super_Hexagon
 function GenerateSpiral(state, pool, { obstacleHeight = 0.05, numLines = 10, initialY = 1.0, reverse = false } = {}) {
@@ -584,16 +619,20 @@ class HexagonLevel {
   tick(delta) {
     throw new Error('Needs to be overwritten by derived implementation');
   }
+  onStop() {
+    throw new Error('Needs to be overwritten by derived implementation');
+  }
 }
 
 // Wire up the model, graphics, input (, sound?)
 class HexagonGame {
-  constructor(canvas, obstaclePool) {
+  constructor(canvas, audioContainer, obstaclePool) {
     this.level = null;
     this.obstaclePool = obstaclePool;
     const renderConfig = new HexagonRenderConfig();
     this.state = new HexagonState(renderConfig);
     this.renderer = new HexagonRenderer(this, canvas);
+    this.sound = new HexagonSound(audioContainer);
     this.controls = new HexagonControls(this, canvas);
     this.timeSinceLastObstacle = 0;
     this.frameTime = 0;
@@ -670,6 +709,8 @@ class HexagonGame {
       const distance = state.obstacleSpeed * effect;
       if (this.update(distance))
         this.playTime += delta;
+      else
+        this.level.onStop();
     }
     // render new frame
     this.renderer.render(delta);
@@ -688,5 +729,8 @@ class HexagonGame {
   }
   setLevel(level) {
     this.level = level;
+  }
+  getSoundManager() {
+    return this.sound;
   }
 }
