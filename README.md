@@ -8,3 +8,6 @@ The FontStruction “Bump IT UP”
 (https://fontstruct.com/fontstructions/show/155156) by Aaron Amar is licensed
 under a Creative Commons Attribution Share Alike license
 (http://creativecommons.org/licenses/by-sa/3.0/).
+
+The files [matrix.js](matrix.js) and [vector.js](vector.js) were taken from Evan Wallace's (evanw) [lightgl.js ](https://github.com/evanw/lightgl.js/) project.
+They are licensed under the MIT license.

@@ -53,7 +53,8 @@ class HexagonRenderConfig {
     this.slotColors = null;
     this.rotation = 0;
     this.zoom = 1;
-    this.cameraOffset = [0, 0];
+    this.eye = [0, 0];
+    this.lookAt = [0, 0];
   }
 }
 
@@ -104,12 +105,6 @@ class HexagonRenderer {
     this.gl = gl;
     this.program = this.createProgram();
     this.vertexBuffer = gl.createBuffer();
-    this.projection = [
-      1, 0, 0, 0,
-      0, 1, 0, 0,
-      0, 0, 1, 0,
-      0, 0, 0, 1
-    ];
     window.addEventListener('resize', (event) => {
       const W  = gl.canvas.clientWidth;
       const H = gl.canvas.clientHeight;
@@ -124,6 +119,20 @@ class HexagonRenderer {
     gl.useProgram(this.program);
   }
 
+  createProjection() {
+    const gamestate = this.game.getState();
+    const config = gamestate.renderConfig;
+    const view = Matrix.lookAt(...config.eye, 1, ...config.lookAt, 0, 0, 1, 0);
+
+    const d = 45;
+    const aspect = this.gl.canvas.width / this.gl.canvas.height;
+    const far = 10;
+    const near = 0.1;
+    const proj = Matrix.perspective(d, aspect, near, far);
+
+    return proj.multiply(view);
+  }
+
   render() {
     const { gl, program } = this;
     const gamestate = this.game.getState();
@@ -131,24 +140,21 @@ class HexagonRenderer {
     gl.clearColor(0.0, 0.0, 0.0, 1.0);
     gl.clear(gl.COLOR_BUFFER_BIT);
 
-    const aspectLoc = gl.getUniformLocation(program, 'aspect');
-    const aspect = gl.canvas.width / gl.canvas.height;
-    gl.uniform1f(aspectLoc, aspect);
     const rotationLoc = gl.getUniformLocation(program, 'rotation');
     gl.uniform1f(rotationLoc, config.rotation);
-    const zLoc = gl.getUniformLocation(program, 'z');
-    gl.uniform1f(zLoc, 0);
-    const camLoc = gl.getUniformLocation(program, 'cam');
-    gl.uniform2f(camLoc, ...config.cameraOffset);
-    const projLoc = gl.getUniformLocation(program, 'proj');
-    const proj = this.projection;
     // The longer dimension will see the full viewport - which is a 1x1 square.
     // Since by default we project to have x coordinates go from -1 to 1,
     // we only need to zoom if y is longer - i.e. aspect is less than zero
-    const aspectZoom = aspect >= 1 ? 1 : 1 / aspect;
-    proj[0 * 4 + 0] = config.zoom * aspectZoom;
-    proj[1 * 4 + 1] = config.zoom * aspectZoom;
-    gl.uniformMatrix4fv(projLoc, false, proj);
+    const aspect = gl.canvas.width / gl.canvas.height;
+    const aspectZoom = aspect >= 1 ? aspect : 1 / aspect;
+    const zoom = config.zoom * aspectZoom;
+    const zoomLoc = gl.getUniformLocation(program, 'zoom');
+    gl.uniform1f(zoomLoc, zoom);
+    const zLoc = gl.getUniformLocation(program, 'z');
+    gl.uniform1f(zLoc, 0);
+    const projLoc = gl.getUniformLocation(program, 'proj');
+    const proj = this.createProjection().transpose();
+    gl.uniformMatrix4fv(projLoc, false, proj.m);
 
     // render slots
     this.updateVertexBuffer();
@@ -183,7 +189,7 @@ class HexagonRenderer {
     offset += 8;
     // render cursor shadow
     if (config.cursorShadowColor) {
-      gl.uniform1f(zLoc, -0.05);
+      gl.uniform1f(zLoc, -0.01);
       gl.uniform3f(colorLoc, ...config.cursorShadowColor);
       gl.drawArrays(gl.TRIANGLES, offset, 3);
       gl.uniform1f(zLoc, 0);
@@ -226,12 +232,13 @@ class HexagonRenderer {
     // create slot vertices
     const slotWidthSum = gamestate.getSlotWidthSum();
     let x = 0;
+    const sl = 2;
     for (let i = 0; i < gamestate.slots.length; i++) {
       vertices.push(x, 0);
-      vertices.push(x, 1);
+      vertices.push(x, sl);
       x += gamestate.slots[i].width / slotWidthSum;
       vertices.push(x, 0);
-      vertices.push(x, 1);
+      vertices.push(x, sl);
     }
     // create obstacle vertices
     x = 0;
@@ -258,9 +265,9 @@ class HexagonRenderer {
     const vsSource = `
       precision mediump float;
       attribute vec4 vertex;
-      uniform float aspect;
       uniform float rotation;
       uniform float z;
+      uniform float zoom;
       uniform mat4 proj;
 
       float PI = 3.14159265359;
@@ -282,12 +289,18 @@ class HexagonRenderer {
         vec4 pos;
         // first, convert from "normal" xy coords to coords on circle
         pos.x = sin(alpha) * r;
-        pos.y = cos(alpha) * r * aspect;
+        pos.y = cos(alpha) * r;
         // scale the point by distance to bottom
         pos *= vertex.y;
-        pos.z = vertex.z;
-        pos.w = vertex.w;
+        // apply zoom
+        pos.xy *= zoom;
+        // prepare for projection
+        pos.z = z;
+        pos.w = 1.;
         pos = proj * pos;
+        //pos.xyz /= pos.w;
+        pos.z = 0.;
+        //pos.w = 1.;
         gl_Position = pos;
       }
     `;
@@ -546,22 +559,30 @@ function GeneratePot(state, pool, { obstacleHeight = 0.05, initialY = 1.0, offse
 
 // Manage state required to interpolate time-based progress of animations etc.
 class HexagonTween {
-  constructor(duration, cooldown, callback) {
+  constructor(duration, cooldown, state, callback) {
     this.duration = duration;
     this.cooldown = cooldown;
+    this.state = state;
     this.callback = callback;
     this.timePassed = 0;
   }
   tick(delta) {
     this.timePassed += delta;
-    const { callback, cooldown, duration, timePassed } = this;
+    const { callback, duration, timePassed } = this;
     if (timePassed <= duration + delta) {
       const progress = Math.min(timePassed / duration, 1);
-      callback(progress, this);
+      callback(progress, this.state, this);
     }
-    if (timePassed > duration + cooldown) {
+    const { cooldown } = this;
+    if (timePassed > duration + cooldown)
       this.timePassed = 0;
-    }
+  }
+}
+
+/// Interface of HexagonLevels
+class HexagonLevel {
+  tick(delta) {
+    throw new Error('Needs to be overwritten by derived implementation');
   }
 }
 
@@ -570,13 +591,13 @@ class HexagonGame {
   constructor(canvas, obstaclePool) {
     this.level = null;
     this.obstaclePool = obstaclePool;
+    const renderConfig = new HexagonRenderConfig();
+    this.state = new HexagonState(renderConfig);
     this.renderer = new HexagonRenderer(this, canvas);
     this.controls = new HexagonControls(this, canvas);
     this.timeSinceLastObstacle = 0;
     this.frameTime = 0;
     this.playTime = 0;
-    const renderConfig = new HexagonRenderConfig();
-    this.state = new HexagonState(renderConfig);
 
     this.prevTime = performance.now();
     this.boundTickCb = (time) => this.tick(time);

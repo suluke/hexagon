@@ -32,13 +32,6 @@ class HexagonArrowButton {
   }
 }
 
-/// Interface of HexagonLevels
-class HexagonLevel {
-  tick(delta) {
-    throw new Error('Needs to be overwritten by derived implementation');
-  }
-}
-
 class HexagonTitleScreen extends HexagonScreen {
   constructor(app) {
     super(app);
@@ -57,15 +50,45 @@ class HexagonTitleScreen extends HexagonScreen {
     this.elm.addEventListener('click', () => {
       this.app.changeScreen('level-1');
     });
+
+    class Level extends HexagonLevel {
+      constructor(game) {
+        super();
+        this.game = game;
+      }
+      reset() {
+        const state = this.game.getState();
+        state.renderConfig.slotColors = [[0.188, 0.188, 0.188], [0.149, 0.149, 0.149]];
+        state.renderConfig.obstacleColor = [0.5, 0.5, 0.5];
+        state.renderConfig.innerHexagonColor = [0.5, 0.5, 0.5];
+        state.renderConfig.outerHexagonColor = [0.5, 0.5, 0.5];
+        state.renderConfig.cursorColor = [0.188, 0.188, 0.188];
+        state.renderConfig.zoom = 5;
+        state.renderConfig.eye = [0, 0.5];
+        state.renderConfig.lookAt = [0, 1];
+        this.tweens = [
+          new HexagonTween(10000, 0, null, (progress) => {
+            state.renderConfig.rotation = 1 - progress;
+          }),
+        ];
+      }
+      tick(delta) {
+        for (let i = 0; i < this.tweens.length; i++)
+          this.tweens[i].tick(delta);
+      }
+    }
+
+    this.level = new Level(app.getGame());
   }
   enter() {
+    this.level.reset();
     this.app.getUIContainer().appendChild(this.elm);
   }
   leave() {
     this.elm.remove();
   }
   getLevel() {
-    return null;
+    return this.level;
   }
 }
 
@@ -97,19 +120,19 @@ class HexagonLevel1 extends HexagonScreen {
     const colorInterpolationDuration = 1000;
     const colorSwapDuration = 1500;
     const timeBetweenObstacles = 0;
-    const zoomPeriod = 1500;
-    const state = app.getGame().getState();
+    const zoomPeriod = 150;
+    const gamestate = app.getGame().getState();
     this.tweens = [
       // interpolate slot colors
-      new HexagonTween(colorInterpolationDuration, 0, (progress) => {
+      new HexagonTween(colorInterpolationDuration, 0, null, (progress) => {
         const brightness = 1 - Math.abs(1 - 2 * progress) * 0.2;
         for (let i = 0; i < this.slotColor1.length; i++) {
-          state.renderConfig.slotColors[0][i] = brightness * this.slotColor1[i];
-          state.renderConfig.slotColors[1][i] = brightness * this.slotColor2[i];
+          gamestate.renderConfig.slotColors[0][i] = brightness * this.slotColor1[i];
+          gamestate.renderConfig.slotColors[1][i] = brightness * this.slotColor2[i];
         }
       }),
       // swap slot colors
-      new HexagonTween(colorSwapDuration, 0, (progress) => {
+      new HexagonTween(colorSwapDuration, 0, null, (progress) => {
         if (progress === 1) {
           const tmp = this.slotColor1;
           this.slotColor1 = this.slotColor2;
@@ -117,33 +140,40 @@ class HexagonLevel1 extends HexagonScreen {
         }
       }),
       // generate obstacles
-      new HexagonTween(1 /* end asap */, timeBetweenObstacles, (progress, tween) => {
-        if (progress == 1 && state.running) {
+      new HexagonTween(1 /* end asap */, timeBetweenObstacles, null, (progress, state, tween) => {
+        if (progress == 1 && gamestate.running) {
           let height = -1;
           const opts = {};
           do {
             const genIdx = Math.floor(Math.random() * this.obstacleGens.length);
             const gen = this.obstacleGens[genIdx];
-            height = gen(state, this.obstaclePool, opts);
+            height = gen(gamestate, this.obstaclePool, opts);
           } while(height < 0);
-          tween.duration = height / state.obstacleSpeed * HexagonConstants.targetTickTime;
+          tween.duration = height / gamestate.obstacleSpeed * HexagonConstants.targetTickTime;
         }
       }),
       // interpolate rotation
-      new HexagonTween(fullRotationTime, 0, (progress) => {
-        state.renderConfig.rotation = progress;
+      new HexagonTween(fullRotationTime, 0, null, (progress) => {
+        gamestate.renderConfig.rotation = progress;
       }),
       // zoom
-      new HexagonTween(zoomPeriod, 0, (progress) => {
-        const zoommand = (1 - Math.abs(1 - 2 * progress)) * 0.3;
-        state.renderConfig.zoom = 1 + zoommand;
+      new HexagonTween(zoomPeriod, 0, {distance : 1}, (progress, state, tween) => {
+        if (progress === 1) {
+          state.distance = 0.2 + Math.random() * 0.2;
+          //tween.cooldown = 200 + Math.random() * 1000;
+        }
+        const zoommand = (1 - Math.abs(1 - 2 * progress)) * state.distance * 0.2;
+        gamestate.renderConfig.zoom = 1 + zoommand;
+      }),
+      new HexagonTween(2000, 0, null, (progress) => {
+        gamestate.renderConfig.eye[0] = ((1 - Math.abs(1 - 2 * progress)) - 0.5) * 0.5;
       })
     ];
-    this.reset();
   }
   enter() {
     if (this.timeUpdater !== 0)
       throw new Error("Screen lifecycle should assert that timeUpdater is inactive on enter");
+    this.reset();
     this.app.getUIContainer().appendChild(this.elm);
     this.timeUpdater = window.setInterval(() => {
       const time = this.app.getGame().getPlayTime();
@@ -175,11 +205,12 @@ class HexagonLevel1 extends HexagonScreen {
     state.renderConfig.outerHexagonColor = outerHexagonColor;
     state.renderConfig.obstacleColor = obstacleColor;
     state.renderConfig.slotColors = slotColors;
+    state.renderConfig.eye[1] = -0.5;
+    state.renderConfig.lookAt = [0, 0];
     state.obstacleSpeed = 0.008;
     state.cursorSpeed = 0.037;
   }
   tick(delta) {
-    const { state } = this;
     for (let i = 0; i < this.tweens.length; i++)
       this.tweens[i].tick(delta);
   }
