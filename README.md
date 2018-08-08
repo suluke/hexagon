@@ -8,6 +8,7 @@ The following lists describe what is already working and what is still on the ro
 
 ### Done
 * basic hexagonal rendering
+* basic gameplay
 * perspective projection
 * some music
 * some obstacles
@@ -35,3 +36,5 @@ They are licensed under the MIT license.
 
 Music courtesy of [LuckyXXL](https://github.com/luckyxxl).
 Many thanks for making the fantastic soundtrack!
+
+Female voice sounds generated on [fromtexttospeech.com](http://www.fromtexttospeech.com/) using US English voice 'Alice'.

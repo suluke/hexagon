@@ -3,7 +3,7 @@
  **************************************************/
 @font-face {
   font-family: "Bump It Up";
-  src: url("bump_it_up.ttf") format("opentype");
+  src: url("data/bumpitup.ttf") format("opentype");
 }
 html, body, .hexagon-app, .hexagon-ui, .hexagon-viewport {
   width: 100%;
