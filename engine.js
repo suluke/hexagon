@@ -115,22 +115,60 @@ class HexagonRenderer {
         gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
       }
     });
+    // Caches the parameters that influence the view-projection matrix
+    // and only recomputes the matrix if necessary. Furthermore, memory
+    // allocated for the intermediate matrices is maintained here so that
+    // no new allocations are necessary.
+    class ProjectionConfig {
+      constructor() {
+        this.eye = [0, 0];
+        this.lookAt = [0, 0];
+        this.aspect = 1;
+        this.fov = 45;
+        this.far = 10;
+        this.near = 0.1;
+        this.view = Matrix.lookAt(...this.eye, 1, ...this.lookAt, 0, 0, 1, 0);
+        this.proj = Matrix.perspective(this.fov, this.aspect, this.near, this.far);
+        this.temp = new Matrix();
+        this.viewproj = new Matrix();
+      }
+      getUpdatedViewProjection(aspect, renderconfig) {
+        const { eye, lookAt } = renderconfig;
+        let changed = false;
+        // Check if the view matrix needs updating
+        if (eye[0] !== this.eye[0] || eye[1] !== this.eye[1] ||
+            lookAt[0] !== this.lookAt[0] || lookAt[1] !== this.lookAt[1]) {
+          changed = true;
+          this.eye[0] = eye[0];
+          this.eye[1] = eye[1];
+          this.lookAt[0] = lookAt[0];
+          this.lookAt[1] = lookAt[1];
+          this.view = Matrix.lookAt(...this.eye, 1, ...this.lookAt, 0, 0, 1, 0, this.view);
+        }
+        // Check if the projection matrix needs updating
+        if (aspect !== this.aspect) {
+          changed = true;
+          this.aspect = aspect;
+          this.proj = Matrix.perspective(this.fov, this.aspect, this.near, this.far, this.proj);
+        }
+        // Any changes require a recomputation of the view-projection
+        if (changed) {
+          this.temp = this.proj.multiply(this.view, this.temp);
+          this.viewproj = this.temp.transpose(this.viewproj);
+        }
+        return this.viewproj;
+      }
+    };
+    this.projection = new ProjectionConfig();
 
     gl.useProgram(this.program);
   }
 
-  createProjection() {
+  getProjectionMatrix() {
+    const aspect = this.gl.canvas.width / this.gl.canvas.height;
     const gamestate = this.game.getState();
     const config = gamestate.renderConfig;
-    const view = Matrix.lookAt(...config.eye, 1, ...config.lookAt, 0, 0, 1, 0);
-
-    const d = 45;
-    const aspect = this.gl.canvas.width / this.gl.canvas.height;
-    const far = 10;
-    const near = 0.1;
-    const proj = Matrix.perspective(d, aspect, near, far);
-
-    return proj.multiply(view);
+    return this.projection.getUpdatedViewProjection(aspect, config).m;
   }
 
   render() {
@@ -153,8 +191,8 @@ class HexagonRenderer {
     const zLoc = gl.getUniformLocation(program, 'z');
     gl.uniform1f(zLoc, 0);
     const projLoc = gl.getUniformLocation(program, 'proj');
-    const proj = this.createProjection().transpose();
-    gl.uniformMatrix4fv(projLoc, false, proj.m);
+    const proj = this.getProjectionMatrix();
+    gl.uniformMatrix4fv(projLoc, false, proj);
 
     // render slots
     this.updateVertexBuffer();
