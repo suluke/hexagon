@@ -46,8 +46,8 @@ div[class^="hexagon-screen-"] > *, div[class*=" hexagon-screen-"] > * {
 .hexagon-directional-button {
   position: absolute;
   z-index: 20;
-  width: 30vh;
-  height: 20vh;
+  width: 15vw;
+  height: 10vw;
 }
 .hexagon-directional-button *:nth-child(1) {
   fill: black;
@@ -72,32 +72,33 @@ div[class^="hexagon-screen-"] > *, div[class*=" hexagon-screen-"] > * {
   position: absolute;
   top: 50%;
   left: 50%;
-  transform: translate(-50%, -90%);
+  transform: translate(-50%, -100%);
   white-space: pre;
 }
 .hexagon-screen-title h1 > span:first-child:after {
   content: "\A";
 }
 .hexagon-screen-title h1 > span:nth-child(1) {
-  font-size: 15vh;
+  font-size: 11vw;
 }
 .hexagon-screen-title h1 > span:nth-child(2) {
-  font-size: 11vh;
-  margin-left: 15vh;
+  font-size: 8vw;
+  margin-left: 8vw;
 }
 .hexagon-screen-title .hexagon-title-action {
+  font-size: 2vw;
   position: absolute;
   top: 70%;
   left: 50%;
   transform: translate(-50%);
 }
 .hexagon-screen-title .hexagon-directional-button.left {
-  left: 20vh;
+  left: 10vw;
   bottom: 20vh;
   transform: skew(20deg);
 }
 .hexagon-screen-title .hexagon-directional-button.right {
-  right: 20vh;
+  right: 10vw;
   bottom: 20vh;
   transform: scale(-1, 1) skew(20deg);
 }
