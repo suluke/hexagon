@@ -24,6 +24,7 @@ The following lists describe what is already working and what is still on the ro
 * highlight current slot
 * high-score tracking
 * achievements
+* mouse controls using left btn for left, right btn for right, middle for back and both for enter
 
 ## Legal
 The FontStruction “Bump IT UP”

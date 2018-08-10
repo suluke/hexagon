@@ -60,7 +60,7 @@ class HexagonRenderConfig {
 
 class HexagonState {
   constructor(renderConfig) {
-    this.running = true;
+    this.running = false;
     this.position = 1 / 12;
     this.obstacleSpeed = 0.005;
     this.cursorSpeed = 0.03;
@@ -377,20 +377,37 @@ class HexagonRenderer {
 }
 
 /// All things input
+/// Since we want all keyboard events to go through this class, this is
+/// also where everyone else that wants key press information should
+/// go through. See `addKeyListener`.
 class HexagonControls {
-  constructor(game, canvas) {
-    canvas.tabIndex = 0;
-    canvas.focus();
+  constructor(game, canvas, topLevelElm) {
     this.game = game;
+    this.newKeysDown = new Set();
+    //~ this.keyDownTimes = {};
+    //~ this.keyRepeatMillis = 150;
     this.keysDown = new Set();
+    this.keyListeners = [];
     this.touchLeft = false;
     this.touchRight = false;
+
+    canvas.tabIndex = 0;
+    canvas.focus();
     canvas.addEventListener('keydown', (event) => {
       this.keysDown.add(event.code);
+      this.newKeysDown.add(event.code);
+      //~ this.keyDownTimes[event.code] = 0;
     });
     canvas.addEventListener('keyup', (event) => {
       this.keysDown.delete(event.code);
     });
+    canvas.addEventListener('blur', (event) => {
+      canvas.focus();
+    });
+    canvas.addEventListener('focusout', (event) => {
+      canvas.focus();
+    });
+
     let isDown = false;
     const touchDown = (event) => {
       canvas.focus();
@@ -427,13 +444,37 @@ class HexagonControls {
     canvas.addEventListener("touchstart", touchDown);
     canvas.addEventListener("touchmove", touchMove);
     canvas.addEventListener("touchend", touchEnd);
+    // Other elements in the container may be clicked, but they should not
+    // assume the focus
+    topLevelElm.tabIndex = 0;
+    topLevelElm.addEventListener('focusin', (event) => {
+      canvas.focus();
+    });
+  }
+  addKeyListener(listener) {
+    this.keyListeners.push(listener);
   }
   tick(delta) {
-    const { keysDown } = this;
-    const gamestate = this.game.getState();
-    if (!gamestate.running) {
-      return;
+    const { newKeysDown, keysDown, /* keyDownTimes, keyRepeatMillis,*/ keyListeners } = this;
+    // Update keyDownTimes
+    //~ for (let key of keysDown) {
+      //~ keyDownTimes[key] += delta;
+      //~ if (keyDownTimes[key] > keyRepeatMillis) {
+        //~ keyDownTimes[key] = 0;
+        //~ newKeysDown.add(key);
+      //~ }
+    //~ }
+    // Forward key information to key event listeners
+    if (newKeysDown.size > 0) {
+      for (let i = 0; i < keyListeners.length; i++)
+        keyListeners[i](newKeysDown);
+      newKeysDown.clear();
     }
+    // Apply controls on game state
+    // TODO this feels like bad separation of concerns
+    const gamestate = this.game.getState();
+    if (!gamestate.running)
+      return;
     const effect = delta / HexagonConstants.targetTickTime;
     const left = keysDown.has('ArrowLeft') || this.touchLeft;
     const right = keysDown.has('ArrowRight') || this.touchRight;
@@ -662,16 +703,16 @@ class HexagonLevel {
   }
 }
 
-// Wire up the model, graphics, input (, sound?)
+// Wire up the model, graphics, input, sound
 class HexagonGame {
-  constructor(canvas, audioContainer, obstaclePool) {
+  constructor(container, canvas, audioContainer, obstaclePool) {
     this.level = null;
     this.obstaclePool = obstaclePool;
     const renderConfig = new HexagonRenderConfig();
     this.state = new HexagonState(renderConfig);
     this.renderer = new HexagonRenderer(this, canvas);
     this.sound = new HexagonSound(audioContainer);
-    this.controls = new HexagonControls(this, canvas);
+    this.controls = new HexagonControls(this, canvas, container);
     this.timeSinceLastObstacle = 0;
     this.frameTime = 0;
     this.playTime = 0;
@@ -770,5 +811,8 @@ class HexagonGame {
   }
   getSoundManager() {
     return this.sound;
+  }
+  addKeyListener(listener) {
+    this.controls.addKeyListener(listener);
   }
 }

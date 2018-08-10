@@ -23,12 +23,26 @@ class HexagonArrowButton {
         <path d="M20,50 L35,15 L35,30 L80,30 L80,70 L35,70 L35,85z" fill="black"></path>
       </svg>
     `);
+    this.listeners = [];
+    const trigger = (evt) => {
+      evt.stopPropagation();
+      this.trigger();
+    };
+    this.elm.addEventListener('click', trigger);
+    this.elm.addEventListener('touchstart', trigger);
   }
   appendTo(elm) {
     elm.appendChild(this.elm);
   }
   addClass(clazz) {
     this.elm.classList.add(clazz);
+  }
+  addListener(listener) {
+    this.listeners.push(listener);
+  }
+  trigger() {
+    for (let i = 0; i < this.listeners.length; i++)
+      this.listeners[i]();
   }
 }
 
@@ -38,18 +52,42 @@ class HexagonTitleScreen extends HexagonScreen {
     this.elm = HexagonApp.parseHtml(`
       <div class="hexagon-screen-title">
         <h1><span>libre</span><span>hexagon</span></h1>
-        <span class="hexagon-title-action">tap to start</span>
+        <span class="hexagon-title-action">start game</span>
       </div>
     `);
+    const actionDisplay = this.elm.querySelector('.hexagon-title-action');
+    const actions = [
+      { text: 'start game', action: () => { this.app.changeScreen('level-1'); } },
+      { text: 'options', action: () => { this.app.changeScreen('level-1'); } },
+      { text: 'credits', action: () => { this.app.changeScreen('level-1'); } }
+    ];
+    this.action = 0;
     this.leftBtn = new HexagonArrowButton();
+    this.leftBtn.addListener(() => {
+      this.action = (this.action - 1 + actions.length) % actions.length;
+      actionDisplay.textContent = actions[this.action].text;
+    });
     this.leftBtn.addClass('left');
     this.leftBtn.appendTo(this.elm);
     this.rightBtn = new HexagonArrowButton();
+    this.rightBtn.addListener(() => {
+      this.action = (this.action + 1) % actions.length;
+      actionDisplay.textContent = actions[this.action].text;
+    });
     this.rightBtn.addClass('right');
     this.rightBtn.appendTo(this.elm);
     this.elm.addEventListener('click', () => {
-      this.app.changeScreen('level-1');
+      actions[this.action].action();
     });
+    app.addKeyListener((keysDown) => {
+      if (keysDown.has('ArrowLeft'))
+        this.leftBtn.trigger();
+      if (keysDown.has('ArrowRight'))
+        this.rightBtn.trigger();
+      if (keysDown.has('Space'))
+        actions[this.action].action();
+    });
+
     this.startupSound = app.getGame().getSoundManager().addSound('data/sounds/superhexagon.mp3');
     this.startupSound.play();
 
@@ -123,12 +161,28 @@ class HexagonLevel1 extends HexagonScreen {
     const colorSwapDuration = 1500;
     const timeBetweenObstacles = 0;
     const zoomPeriod = 150;
-    const gamestate = app.getGame().getState();
-    const soundManager = app.getGame().getSoundManager();
+    const game = app.getGame();
+    const gamestate = game.getState();
+    const soundManager = game.getSoundManager();
     this.music = soundManager.addSound('data/music/music0.mp3');
     this.music.setLooping(true);
     this.beginSound = soundManager.addSound('data/sounds/begin.mp3');
     this.gameoverSound = soundManager.addSound('data/sounds/gameover.mp3');
+
+    const restartIfStopped = () => {
+      if (this.isActive() && !game.getState().running)
+        game.restart();
+    };
+    const canvas = app.getCanvas();
+    canvas.addEventListener('mousedown', restartIfStopped);
+    canvas.addEventListener('touchstart', restartIfStopped);
+    app.addKeyListener((keysDown) => {
+      if (keysDown.has('Space'))
+        restartIfStopped();
+      if (keysDown.has('Escape'))
+        app.changeScreen('title');
+    });
+
     this.tweens = [
       // interpolate slot colors
       new HexagonTween(colorInterpolationDuration, 0, null, (progress) => {
@@ -177,6 +231,9 @@ class HexagonLevel1 extends HexagonScreen {
       })
     ];
   }
+  isActive() {
+    return this.elm.parentNode !== null;
+  }
   enter() {
     if (this.timeUpdater !== 0)
       throw new Error("Screen lifecycle should assert that timeUpdater is inactive on enter");
@@ -192,6 +249,7 @@ class HexagonLevel1 extends HexagonScreen {
     this.elm.remove();
     window.clearInterval(this.timeUpdater);
     this.timeUpdater = 0;
+    this.music.stop();
   }
   getLevel() {
     return this;
@@ -234,30 +292,22 @@ class HexagonApp {
     this.elm = HexagonApp.parseHtml(`
       <div class="hexagon-app">
         <div class="hexagon-ui"></div>
-        <canvas class="hexagon-viewport"></canvas>
+        <canvas class="hexagon-viewport" tabindex=0></canvas>
       </div>
     `);
     container.appendChild(this.elm);
     this.canvas = this.elm.querySelector('.hexagon-viewport');
     this.uiContainer = this.elm.querySelector('.hexagon-ui');
     this.obstaclePool = new HexagonObstaclePool();
-    this.game = new HexagonGame(this.canvas, this.elm, this.obstaclePool);
-    const restartIfStopped = () => {
-      if (!this.game.getState().running)
-        this.game.restart();
-    };
-    this.canvas.addEventListener("mousedown", restartIfStopped);
-    this.canvas.addEventListener("touchstart", restartIfStopped);
-    this.canvas.addEventListener('keydown', (event) => {
-      if (event.code === 'Space')
-        restartIfStopped();
-    });
+    this.game = new HexagonGame(this.elm, this.canvas, this.elm, this.obstaclePool);
 
     this.screens = {
       'title': new HexagonTitleScreen(this),
       'level-1': new HexagonLevel1(this)
     };
     this.screen = null;
+    this.screenName = null;
+    this.screenChangeListeners = [];
     this.changeScreen('title');
   }
   changeScreen(screenName) {
@@ -269,7 +319,10 @@ class HexagonApp {
     this.game.setLevel(screen.getLevel());
     this.game.restart();
     screen.enter();
+    for (let i = 0; i < this.screenChangeListeners.length; i++)
+      this.screenChangeListeners[i](screenName, this.screenName);
     this.screen = screen;
+    this.screenName = screenName;
     this.canvas.focus();
   }
   getFPS() {
@@ -278,11 +331,23 @@ class HexagonApp {
   getGame() {
     return this.game;
   }
+  getCanvas() {
+    return this.canvas;
+  }
   getUIContainer() {
     return this.uiContainer;
   }
   getObstaclePool() {
     return this.obstaclePool;
+  }
+  addKeyListener(listener) {
+    this.game.addKeyListener(listener);
+  }
+  addScreenChangeListener(listener) {
+    this.screenChangeListeners.push(listener);
+  }
+  getCurrentScreenName() {
+    return this.screenName;
   }
 
   /// Parse html strings containing a single parent tag of arbitrary type

@@ -79,10 +79,10 @@ div[class^="hexagon-screen-"] > *, div[class*=" hexagon-screen-"] > * {
   content: "\A";
 }
 .hexagon-screen-title h1 > span:nth-child(1) {
-  font-size: 11vw;
+  font-size: 9vw;
 }
 .hexagon-screen-title h1 > span:nth-child(2) {
-  font-size: 8vw;
+  font-size: 6vw;
   margin-left: 8vw;
 }
 .hexagon-screen-title .hexagon-title-action {
