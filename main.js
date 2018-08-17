@@ -15,7 +15,7 @@ game.addScreenChangeListener((screenName) => {
   if (screenName !== 'title')
     window.location.hash = screenName;
   else
-    history.pushState("", document.title, window.location.pathname
+    history.pushState('', document.title, window.location.pathname
                       + window.location.search);
 });
 window.onhashchange = function(...args) {

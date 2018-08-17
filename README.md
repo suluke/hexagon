@@ -26,6 +26,17 @@ The following lists describe what is already working and what is still on the ro
 * achievements
 * mouse controls using left btn for left, right btn for right, middle for back and both for enter
 
+### Non-goals
+* FOV doesn't get bigger with more extreme aspect ratio:
+    My new phone has a 2:1 aspect ratio and Super Hexagon just extends the field of view (FOV) to cover the additional space.
+    The drawbacks: The game becomes easier because there is more to see. Furthermore, obstacles can be seen spawning - they "pop" up.
+* Glitches:
+    Spirals in the original game allow to move in the wrong direction for a layer or so because it's possible to glitch through two obstacles.
+    I don't think it's in the spirit of the original game to allow mistakes, so I think this is a bug - and I don't want to recreate bugs.
+* Online ranking:
+    This is just broken in the original game. The top scores are all fake (multiple million seconds).
+    Since this is an *open source* re-implementation, I don't see how I would rebuild this in a way that creates any additional value for players.
+
 ## Legal
 The FontStruction “Bump IT UP”
 (https://fontstruct.com/fontstructions/show/155156) by Aaron Amar is licensed

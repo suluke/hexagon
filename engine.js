@@ -4,6 +4,7 @@ const HexagonConstants = {
   cursorY: 0.035,
   cursorW: 0.05,
   cursorH: 0.008,
+  flashDuration: 100,
   godMode: false,
   targetTickTime: Math.round(1 / 60 * 1000)
 };
@@ -55,6 +56,7 @@ class HexagonRenderConfig {
     this.zoom = 1;
     this.eye = [0, 0];
     this.lookAt = [0, 0];
+    this.flashTime = 0;
   }
 }
 
@@ -171,10 +173,16 @@ class HexagonRenderer {
     return this.projection.getUpdatedViewProjection(aspect, config).m;
   }
 
-  render() {
+  render(delta) {
     const { gl, program } = this;
     const gamestate = this.game.getState();
     const config = gamestate.renderConfig;
+    if (config.flashTime > 0) {
+      gl.clearColor(1.0, 1.0, 1.0, 1.0);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      config.flashTime = Math.max(0, config.flashTime - delta);
+      return;
+    }
     gl.clearColor(0.0, 0.0, 0.0, 1.0);
     gl.clear(gl.COLOR_BUFFER_BIT);
 
@@ -788,8 +796,10 @@ class HexagonGame {
       const distance = state.obstacleSpeed * effect;
       if (this.update(distance))
         this.playTime += delta;
-      else
+      else {
+        state.renderConfig.flashTime = HexagonConstants.flashDuration;
         this.level.onStop();
+      }
     }
     // render new frame
     this.renderer.render(delta);
