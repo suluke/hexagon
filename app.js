@@ -58,7 +58,7 @@ class HexagonTitleScreen extends HexagonScreen {
     const actionDisplay = this.elm.querySelector('.hexagon-title-action');
     const actions = [
       { text: 'start game', action: () => { this.app.changeScreen('level-1'); } },
-      { text: 'options', action: () => { this.app.changeScreen('level-1'); } },
+      { text: 'options', action: () => { this.app.changeScreen('settings'); } },
       { text: 'credits', action: () => { this.app.changeScreen('level-1'); } }
     ];
     this.action = 0;
@@ -118,6 +118,64 @@ class HexagonTitleScreen extends HexagonScreen {
       }
     }
 
+    this.level = new Level(app.getGame());
+  }
+  enter() {
+    this.level.reset();
+    this.app.getUIContainer().appendChild(this.elm);
+  }
+  leave() {
+    this.elm.remove();
+  }
+  getLevel() {
+    return this.level;
+  }
+}
+
+class HexagonSettingsScreen extends HexagonScreen {
+  constructor(app) {
+    super(app);
+    this.elm = HexagonApp.parseHtml(`
+      <div class="hexagon-screen-settings">
+        <h1>options</h1>
+        <ul>
+          <li class="active" tabindex="0"><button type="button">change to fullscreen</button></li>
+          <li tabindex="0"><label>change sounds volume <input type="range" min="0" max="100" value="50"/></label></li>
+          <li tabindex="0"><label>change music volume <input type="range" min="0" max="100" value="50"/></label></li>
+          <li tabindex="0"><button type="button">delete records</button></li>
+        </ul>
+      </div>
+    `);
+    app.addKeyListener((keysDown) => {
+      if (keysDown.has('Escape'))
+        this.app.changeScreen('title');
+    });
+    class Level extends HexagonLevel {
+      constructor(game) {
+        super();
+        this.game = game;
+      }
+      reset() {
+        const state = this.game.getState();
+        state.renderConfig.slotColors = [[0.188, 0.188, 0.188], [0.149, 0.149, 0.149]];
+        state.renderConfig.obstacleColor = [0.5, 0.5, 0.5];
+        state.renderConfig.innerHexagonColor = [0.5, 0.5, 0.5];
+        state.renderConfig.outerHexagonColor = [0.5, 0.5, 0.5];
+        state.renderConfig.cursorColor = [0.188, 0.188, 0.188];
+        state.renderConfig.zoom = 5;
+        state.renderConfig.eye = [0, 0.5];
+        state.renderConfig.lookAt = [0, 1];
+        this.tweens = [
+          new HexagonTween(10000, 0, null, (progress) => {
+            state.renderConfig.rotation = 1 - progress;
+          }),
+        ];
+      }
+      tick(delta) {
+        for (let i = 0; i < this.tweens.length; i++)
+          this.tweens[i].tick(delta);
+      }
+    }
     this.level = new Level(app.getGame());
   }
   enter() {
@@ -303,7 +361,8 @@ class HexagonApp {
 
     this.screens = {
       'title': new HexagonTitleScreen(this),
-      'level-1': new HexagonLevel1(this)
+      'level-1': new HexagonLevel1(this),
+      'settings': new HexagonSettingsScreen(this)
     };
     this.screen = null;
     this.screenName = null;
