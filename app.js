@@ -56,12 +56,15 @@ class HexagonArrowButton extends HexagonAbstractButton {
 }
 
 class HexagonTopEdgeButton extends HexagonAbstractButton {
-  constructor(text, right) {
+  constructor(textOrElm, right) {
     super(HexagonApp.parseHtml(`
-      <div class="hexagon-top-edge-button">
-        <span>${text}</span>
-      </div>
+      <div class="hexagon-top-edge-button"></div>
     `));
+    if (typeof(textOrElm) === 'string' || textOrElm instanceof String) {
+      const textNode = HexagonApp.parseHtml(`<span>${textOrElm}</span>`);
+      this.elm.appendChild(textNode);
+    } else
+      this.elm.appendChild(textOrElm);
     const backgroundLeft = `
       <svg xmlns="http://www.w3.org/2000/svg"
            xmlns:xlink="http://www.w3.org/1999/xlink"
@@ -144,7 +147,10 @@ class HexagonTitleScreen extends HexagonScreen {
       else
         this.topLeftBtn.setText('fullscreen');
     });
-    this.topRightBtn = new HexagonTopEdgeButton('github', true);
+    const githubLink = HexagonApp.parseHtml(`
+      <a href="https://github.com/suluke/hexagon">github</a>
+    `);
+    this.topRightBtn = new HexagonTopEdgeButton(githubLink, true);
     this.topRightBtn.addClass('right');
     this.topRightBtn.appendTo(this.elm);
 
