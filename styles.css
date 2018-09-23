@@ -62,6 +62,43 @@ div[class^="hexagon-screen-"] > *, div[class*=" hexagon-screen-"] > * {
 }
 
 /**************************************************
+ *                 Top Edge Buttons               *
+ **************************************************/
+.hexagon-top-edge-button {
+  position: absolute;
+  top: 0;
+  font-size: 3vw;
+  padding-top: 0;
+  padding-bottom: 1vw;
+}
+.hexagon-top-edge-button > svg {
+  position: absolute;
+  width: 133%;
+  height: 100%;
+  top: 0;
+  left: 0;
+  z-index: -1;
+}
+.hexagon-top-edge-button.right > svg {
+  right: 0;
+  left: initial;
+}
+.hexagon-top-edge-button polygon {
+  fill: #525252;
+  stroke: #D6D6D6;
+}
+.hexagon-top-edge-button.left {
+  left: 0;
+  padding-left: 1.5vw;
+  padding-right: 1vw;
+}
+.hexagon-top-edge-button.right {
+  right: 0;
+  padding-left: 1vw;
+  padding-right: 1.5vw;
+}
+
+/**************************************************
  *                  Title Screen                  *
  **************************************************/
 .hexagon-screen-title {
@@ -73,9 +110,9 @@ div[class^="hexagon-screen-"] > *, div[class*=" hexagon-screen-"] > * {
 }
 .hexagon-screen-title h1 {
   position: absolute;
-  top: 50%;
+  top: 40%;
   left: 50%;
-  transform: translate(-50%, -100%);
+  transform: translate(-50%, -50%);
   white-space: pre;
 }
 .hexagon-screen-title h1 > span:first-child:after {
@@ -91,19 +128,19 @@ div[class^="hexagon-screen-"] > *, div[class*=" hexagon-screen-"] > * {
 .hexagon-screen-title .hexagon-title-action {
   font-size: 2vw;
   position: absolute;
-  top: 70%;
+  top: 78%;
   left: 50%;
-  transform: translate(-50%);
+  transform: translateX(-50%);
 }
 .hexagon-screen-title .hexagon-directional-button.left {
+  top: 78%;
   left: 10vw;
-  bottom: 20vh;
-  transform: skew(20deg);
+  transform: skew(20deg) translateY(-50%);
 }
 .hexagon-screen-title .hexagon-directional-button.right {
+  top: 78%;
   right: 10vw;
-  bottom: 20vh;
-  transform: scale(-1, 1) skew(20deg);
+  transform: scale(-1, 1) skew(20deg) translateY(-50%);
 }
 /**************************************************
  *                Settings Screen                 *

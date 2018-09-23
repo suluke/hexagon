@@ -12,17 +12,14 @@ class HexagonScreen {
   getLevel() {
     throw new Error('Needs to be overwritten by derived implementation');
   }
+  isActive() {
+    return this.app.getCurrentScreen() === this;
+  }
 }
 
-class HexagonArrowButton {
-  constructor() {
-    this.elm = HexagonApp.parseSvg(`
-      <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="hexagon-directional-button" viewBox="0 0 100 100" preserveAspectRatio="none">
-        <rect x="0" y="5" width="95" height="95"></rect>
-        <rect x="5" y="0" width="95" height="95"></rect>
-        <path d="M20,50 L35,15 L35,30 L80,30 L80,70 L35,70 L35,85z" fill="black"></path>
-      </svg>
-    `);
+class HexagonAbstractButton {
+  constructor(elm) {
+    this.elm = elm;
     this.listeners = [];
     const trigger = (evt) => {
       evt.stopPropagation();
@@ -46,6 +43,49 @@ class HexagonArrowButton {
   }
 }
 
+class HexagonArrowButton extends HexagonAbstractButton {
+  constructor() {
+    super(HexagonApp.parseSvg(`
+      <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="hexagon-directional-button" viewBox="0 0 100 100" preserveAspectRatio="none">
+        <rect x="0" y="5" width="95" height="95"></rect>
+        <rect x="5" y="0" width="95" height="95"></rect>
+        <path d="M20,50 L35,15 L35,30 L80,30 L80,70 L35,70 L35,85z" fill="black"></path>
+      </svg>
+    `));
+  }
+}
+
+class HexagonTopEdgeButton extends HexagonAbstractButton {
+  constructor(text, right) {
+    super(HexagonApp.parseHtml(`
+      <div class="hexagon-top-edge-button">
+        <span>${text}</span>
+      </div>
+    `));
+    const backgroundLeft = `
+      <svg xmlns="http://www.w3.org/2000/svg"
+           xmlns:xlink="http://www.w3.org/1999/xlink"
+           class="hexagon-top-edge-button-bg" viewBox="0 0 200 100"
+           preserveAspectRatio="xMaxYMax slice">
+        <polygon points="-100,0 200,0 150,100 -100,100"/>
+      </svg>
+    `;
+    const backgroundRight = `
+      <svg xmlns="http://www.w3.org/2000/svg"
+           xmlns:xlink="http://www.w3.org/1999/xlink"
+           class="hexagon-top-edge-button-bg" viewBox="0 0 200 100"
+           preserveAspectRatio="xMinYMax slice">
+        <polygon points="0,0 300,0 300,100 50,100"/>
+      </svg>
+    `;
+    this.background = HexagonApp.parseSvg(right? backgroundRight : backgroundLeft);
+    this.elm.insertBefore(this.background, this.elm.firstChild);
+  }
+  setText(text) {
+    this.elm.querySelector('span').textContent = text;
+  }
+}
+
 class HexagonTitleScreen extends HexagonScreen {
   constructor(app) {
     super(app);
@@ -59,6 +99,7 @@ class HexagonTitleScreen extends HexagonScreen {
     const actions = [
       { text: 'start game', action: () => { this.app.changeScreen('level-1'); } },
       { text: 'options', action: () => { this.app.changeScreen('settings'); } },
+      { text: 'achievements', action: () => { this.app.changeScreen('level-1'); } },
       { text: 'credits', action: () => { this.app.changeScreen('level-1'); } }
     ];
     this.action = 0;
@@ -80,6 +121,8 @@ class HexagonTitleScreen extends HexagonScreen {
       actions[this.action].action();
     });
     app.addKeyListener((keysDown) => {
+      if (!this.isActive())
+        return;
       if (keysDown.has('ArrowLeft'))
         this.leftBtn.trigger();
       if (keysDown.has('ArrowRight'))
@@ -87,6 +130,23 @@ class HexagonTitleScreen extends HexagonScreen {
       if (keysDown.has('Space'))
         actions[this.action].action();
     });
+
+    this.topLeftBtn = new HexagonTopEdgeButton('fullscreen', false);
+    this.topLeftBtn.addClass('left');
+    this.topLeftBtn.appendTo(this.elm);
+    this.topLeftBtn.addListener(() => {
+      const elm = app.getRootElement();
+      app.toggleFullscreen();
+    });
+    app.addFullscreenChangeListener(() => {
+      if (app.isFullScreen())
+        this.topLeftBtn.setText('windowed');
+      else
+        this.topLeftBtn.setText('fullscreen');
+    });
+    this.topRightBtn = new HexagonTopEdgeButton('github', true);
+    this.topRightBtn.addClass('right');
+    this.topRightBtn.appendTo(this.elm);
 
     this.startupSound = app.getGame().getSoundManager().addSound('data/sounds/superhexagon.mp3');
     this.startupSound.play();
@@ -359,6 +419,16 @@ class HexagonApp {
     this.obstaclePool = new HexagonObstaclePool();
     this.game = new HexagonGame(this.elm, this.canvas, this.elm, this.obstaclePool);
 
+    this.fullscreenChangeListeners = [];
+    let isFullScreen = this.isFullScreen();
+    window.addEventListener('resize', (event) => {
+      if (isFullScreen !== this.isFullScreen()) {
+        isFullScreen = this.isFullScreen();
+        for (let i = 0; i < this.fullscreenChangeListeners.length; i++)
+          this.fullscreenChangeListeners[i]();
+      }
+    });
+
     this.screens = {
       'title': new HexagonTitleScreen(this),
       'level-1': new HexagonLevel1(this),
@@ -393,6 +463,9 @@ class HexagonApp {
   getCanvas() {
     return this.canvas;
   }
+  getRootElement() {
+    return this.elm;
+  }
   getUIContainer() {
     return this.uiContainer;
   }
@@ -407,6 +480,64 @@ class HexagonApp {
   }
   getCurrentScreenName() {
     return this.screenName;
+  }
+  getCurrentScreen() {
+    return this.screen;
+  }
+  toggleFullscreen(onEnter, onLeave, onError) {
+    const element = this.getRootElement();
+    if (
+      document.fullscreenElement ||
+      document.webkitFullscreenElement ||
+      document.mozFullScreenElement ||
+      document.msFullscreenElement
+    ) {
+      if (document.exitFullscreen)
+        document.exitFullscreen();
+      else if (document.mozCancelFullScreen)
+        document.mozCancelFullScreen();
+      else if (document.webkitExitFullscreen)
+        document.webkitExitFullscreen();
+      else if (document.msExitFullscreen)
+        document.msExitFullscreen();
+      else {
+        if (onError)
+          onError();
+        return;
+      }
+      if (onLeave)
+        onLeave();
+    } else {
+      if (element.requestFullscreen)
+        element.requestFullscreen();
+      else if (element.mozRequestFullScreen)
+        element.mozRequestFullScreen();
+      else if (element.webkitRequestFullscreen)
+        element.webkitRequestFullscreen(Element.ALLOW_KEYBOARD_INPUT);
+      else if (element.msRequestFullscreen)
+        element.msRequestFullscreen();
+      else {
+        if (onError)
+          onError();
+        return;
+      }
+      if (onEnter)
+        onEnter();
+    }
+  }
+  isFullScreen() {
+    const names = ['fullscreenElement', 'webkitFullscreenElement',
+                   'mozFullScreenElement', 'msFullscreenElement'];
+    for (let i = 0; i < names.length; i++) {
+      console.log(names[i]);
+      console.log(document[names[i]]);
+      if (document[names[i]])
+        return this.getRootElement() === document[names[i]];
+    }
+    return false;
+  }
+  addFullscreenChangeListener(listener) {
+    this.fullscreenChangeListeners.push(listener);
   }
 
   /// Parse html strings containing a single parent tag of arbitrary type
