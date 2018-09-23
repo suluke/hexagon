@@ -192,7 +192,7 @@ class HexagonRenderer {
     // Since by default we project to have x coordinates go from -1 to 1,
     // we only need to zoom if y is longer - i.e. aspect is less than zero
     const aspect = gl.canvas.width / gl.canvas.height;
-    const aspectZoom = aspect >= 1 ? aspect : 1 / aspect;
+    const aspectZoom = aspect >= 1 ? aspect : 1;
     const zoom = config.zoom * aspectZoom;
     const zoomLoc = gl.getUniformLocation(program, 'zoom');
     gl.uniform1f(zoomLoc, zoom);
