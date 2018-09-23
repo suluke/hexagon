@@ -423,6 +423,9 @@ class HexagonApp {
     this.uiContainer = this.elm.querySelector('.hexagon-ui');
     this.obstaclePool = new HexagonObstaclePool();
     this.game = new HexagonGame(this.elm, this.canvas, this.elm, this.obstaclePool);
+    HexagonPersistence.Create().then((persistence) => {
+      this.persistence = persistence;
+    });
 
     this.fullscreenChangeListeners = [];
     let isFullScreen = this.isFullScreen();
@@ -534,8 +537,6 @@ class HexagonApp {
     const names = ['fullscreenElement', 'webkitFullscreenElement',
                    'mozFullScreenElement', 'msFullscreenElement'];
     for (let i = 0; i < names.length; i++) {
-      console.log(names[i]);
-      console.log(document[names[i]]);
       if (document[names[i]])
         return this.getRootElement() === document[names[i]];
     }
