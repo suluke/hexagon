@@ -29,7 +29,7 @@ class HexagonPersistence {
     return JSON.stringify({variables, settings, version});
   }
   persist() {
-    if (this.variables.localStorage !== 0) {
+    if (this.settings.localStorage !== 0) {
       if (window.localStorage)
         window.localStorage.setItem(HexagonPersistence.STORAGE_KEY(), this.serialize());
     } else if (window.localStorage)
@@ -62,9 +62,9 @@ class HexagonPersistence {
         }
       }
     `;
-    const variables = JSON.parse(json);
-    // LibreHexagon specific settings
-    variables.localStorage = 0;
+    const variables = JSON.parse(json).VARIABLES;
+    // LibreHexagon specific variables
+    // TODO
     return variables;
   }
 
@@ -91,7 +91,9 @@ class HexagonPersistence {
         }
       }
     `;
-    const settings = JSON.parse(json);
+    const settings = JSON.parse(json).SETTINGS;
+    // LibreHexagon specific settings
+    settings.localStorage = 0;
     return settings;
   }
 
