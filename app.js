@@ -26,7 +26,6 @@ class HexagonAbstractButton {
       this.trigger();
     };
     this.elm.addEventListener('click', trigger);
-    this.elm.addEventListener('touchstart', trigger);
   }
   appendTo(elm) {
     elm.appendChild(this.elm);
