@@ -517,22 +517,39 @@ class HexagonControls {
 }
 
 class HexagonSound {
-  constructor(container) {
+  constructor(container, messageBus) {
     this.container = container;
     this.sounds = [];
+    this.canPlay = true;
+    this.testSound = this.addSound('data/sounds/silence.mp3');
+    this.testSound.play().catch(() => {
+      this.canPlay = false;
+      // HACK browsers won't let us play sounds without user interaction.
+      // We therefore add an additional overlay the user needs to click
+      // through which at the same time enables us to play sounds again.
+      messageBus.sendMessage('app', new HexagonMessage('forceUserInteraction', null));
+    });
+  }
+  /// @return a sound that only contains silence
+  getTestSound() {
+    return this.testSound;
   }
   addSound(src) {
     class Sound {
-      constructor(src, parentElm) {
-        this.elm = document.createElement("audio");
+      constructor(soundMgr, src, parentElm) {
+        this.elm = document.createElement('audio');
         this.elm.src = src;
-        this.elm.setAttribute("preload", "auto");
-        this.elm.setAttribute("controls", "none");
-        this.elm.style.display = "none";
+        this.elm.setAttribute('preload', 'auto');
+        this.elm.setAttribute('controls', 'none');
+        this.elm.autoplay = false;
+        this.elm.style.display = 'none';
+        this.soundMgr = soundMgr;
         parentElm.appendChild(this.elm);
       }
-      play() {
-        this.elm.play();
+      async play() {
+        if (!this.soundMgr.canPlay)
+          return;
+        return this.elm.play();
       }
       pause() {
         this.elm.pause();
@@ -545,7 +562,7 @@ class HexagonSound {
         this.elm.loop = loop;
       }
     }
-    const sound = new Sound(src, this.container);
+    const sound = new Sound(this, src, this.container);
     this.sounds.push(sound);
     return sound;
   }
@@ -711,15 +728,58 @@ class HexagonLevel {
   }
 }
 
+/// Message struct that can be deliverd over the MessageBus
+class HexagonMessage {
+  constructor(name, payload) {
+    this.name = name;
+    this.payload = payload;
+  }
+  getName() {
+    return this.name;
+  }
+  getPayload() {
+    return this.payload;
+  }
+}
+
+/// Interface for classes that can consume messages
+class HexagonMessageReceiver {
+  receiveMessage(msg) {
+    throw new Error('Needs to be overwritten by derived implementation');
+  }
+}
+
+/// A dictionary-based message delivery bus.
+/// Messages are 'actions' that 
+class HexagonMessageBus {
+  constructor() {
+    this.recipients = {};
+  }
+  registerRecipient(name, recipient) {
+    this.recipients[name] = recipient;
+  }
+  sendMessage(recipientName, action) {
+    const recipient = this.recipients[recipientName];
+    if (!recipient) {
+      console.warn(`No action recipient found for name "${recipientName}"`);
+      return;
+    }
+    recipient.receiveMessage(action);
+  }
+}
+
+
 // Wire up the model, graphics, input, sound
-class HexagonGame {
-  constructor(container, canvas, audioContainer, obstaclePool) {
+class HexagonGame extends HexagonMessageReceiver {
+  constructor(container, canvas, audioContainer, messageBus, obstaclePool) {
+    super();
     this.level = null;
     this.obstaclePool = obstaclePool;
     const renderConfig = new HexagonRenderConfig();
     this.state = new HexagonState(renderConfig);
     this.renderer = new HexagonRenderer(this, canvas);
-    this.sound = new HexagonSound(audioContainer);
+    messageBus.registerRecipient('engine', this);
+    this.sound = new HexagonSound(audioContainer, messageBus);
     this.controls = new HexagonControls(this, canvas, container);
     this.timeSinceLastObstacle = 0;
     this.frameTime = 0;
@@ -824,5 +884,15 @@ class HexagonGame {
   }
   addKeyListener(listener) {
     this.controls.addKeyListener(listener);
+  }
+  receiveMessage(msg) {
+    switch(msg.getName()) {
+      case 'userInteractionForced': {
+        this.sound.canPlay = true;
+        break;
+      }
+      default:
+        console.warn(`No handler defined for message of type "${msg.getName()}"`);
+    }
   }
 }

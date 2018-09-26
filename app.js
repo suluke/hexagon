@@ -1,202 +1,3 @@
-/// Interface of HexagonScreens
-class HexagonScreen {
-  constructor(app) {
-    this.app = app;
-  }
-  enter() {
-    throw new Error('Needs to be overwritten by derived implementation');
-  }
-  leave() {
-    throw new Error('Needs to be overwritten by derived implementation');
-  }
-  getLevel() {
-    throw new Error('Needs to be overwritten by derived implementation');
-  }
-  isActive() {
-    return this.app.getCurrentScreen() === this;
-  }
-}
-
-class HexagonAbstractButton {
-  constructor(elm) {
-    this.elm = elm;
-    this.listeners = [];
-    const trigger = (evt) => {
-      evt.stopPropagation();
-      this.trigger();
-    };
-    this.elm.addEventListener('click', trigger);
-  }
-  appendTo(elm) {
-    elm.appendChild(this.elm);
-  }
-  addClass(clazz) {
-    this.elm.classList.add(clazz);
-  }
-  addListener(listener) {
-    this.listeners.push(listener);
-  }
-  trigger() {
-    for (let i = 0; i < this.listeners.length; i++)
-      this.listeners[i]();
-  }
-}
-
-class HexagonArrowButton extends HexagonAbstractButton {
-  constructor() {
-    super(HexagonApp.parseSvg(`
-      <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" class="hexagon-directional-button" viewBox="0 0 100 100" preserveAspectRatio="none">
-        <rect x="0" y="5" width="95" height="95"></rect>
-        <rect x="5" y="0" width="95" height="95"></rect>
-        <path d="M20,50 L35,15 L35,30 L80,30 L80,70 L35,70 L35,85z" fill="black"></path>
-      </svg>
-    `));
-  }
-}
-
-class HexagonTopEdgeButton extends HexagonAbstractButton {
-  constructor(textOrElm, right) {
-    super(HexagonApp.parseHtml(`
-      <div class="hexagon-top-edge-button"></div>
-    `));
-    if (typeof(textOrElm) === 'string' || textOrElm instanceof String) {
-      const textNode = HexagonApp.parseHtml(`<span>${textOrElm}</span>`);
-      this.elm.appendChild(textNode);
-    } else
-      this.elm.appendChild(textOrElm);
-    const backgroundLeft = `
-      <svg xmlns="http://www.w3.org/2000/svg"
-           xmlns:xlink="http://www.w3.org/1999/xlink"
-           class="hexagon-top-edge-button-bg" viewBox="0 0 200 100"
-           preserveAspectRatio="xMaxYMax slice">
-        <polygon points="-100,0 200,0 150,100 -100,100"/>
-      </svg>
-    `;
-    const backgroundRight = `
-      <svg xmlns="http://www.w3.org/2000/svg"
-           xmlns:xlink="http://www.w3.org/1999/xlink"
-           class="hexagon-top-edge-button-bg" viewBox="0 0 200 100"
-           preserveAspectRatio="xMinYMax slice">
-        <polygon points="0,0 300,0 300,100 50,100"/>
-      </svg>
-    `;
-    this.background = HexagonApp.parseSvg(right? backgroundRight : backgroundLeft);
-    this.elm.insertBefore(this.background, this.elm.firstChild);
-  }
-  setText(text) {
-    this.elm.querySelector('span').textContent = text;
-  }
-}
-
-class HexagonTitleScreen extends HexagonScreen {
-  constructor(app) {
-    super(app);
-    this.elm = HexagonApp.parseHtml(`
-      <div class="hexagon-screen-title">
-        <h1><span>libre</span><span>hexagon</span></h1>
-        <span class="hexagon-title-action">start game</span>
-      </div>
-    `);
-    const actionDisplay = this.elm.querySelector('.hexagon-title-action');
-    const actions = [
-      { text: 'start game', action: () => { this.app.changeScreen('level-1'); } },
-      { text: 'options', action: () => { this.app.changeScreen('settings'); } },
-      { text: 'achievements', action: () => { this.app.changeScreen('level-1'); } },
-      { text: 'credits', action: () => { this.app.changeScreen('level-1'); } }
-    ];
-    this.action = 0;
-    this.leftBtn = new HexagonArrowButton();
-    this.leftBtn.addListener(() => {
-      this.action = (this.action - 1 + actions.length) % actions.length;
-      actionDisplay.textContent = actions[this.action].text;
-    });
-    this.leftBtn.addClass('left');
-    this.leftBtn.appendTo(this.elm);
-    this.rightBtn = new HexagonArrowButton();
-    this.rightBtn.addListener(() => {
-      this.action = (this.action + 1) % actions.length;
-      actionDisplay.textContent = actions[this.action].text;
-    });
-    this.rightBtn.addClass('right');
-    this.rightBtn.appendTo(this.elm);
-    this.elm.addEventListener('click', () => {
-      actions[this.action].action();
-    });
-    app.addKeyListener((keysDown) => {
-      if (!this.isActive())
-        return;
-      if (keysDown.has('ArrowLeft'))
-        this.leftBtn.trigger();
-      if (keysDown.has('ArrowRight'))
-        this.rightBtn.trigger();
-      if (keysDown.has('Space'))
-        actions[this.action].action();
-    });
-
-    this.topLeftBtn = new HexagonTopEdgeButton('fullscreen', false);
-    this.topLeftBtn.addClass('left');
-    this.topLeftBtn.appendTo(this.elm);
-    this.topLeftBtn.addListener(() => {
-      const elm = app.getRootElement();
-      app.toggleFullscreen();
-    });
-    app.addFullscreenChangeListener(() => {
-      if (app.isFullScreen())
-        this.topLeftBtn.setText('windowed');
-      else
-        this.topLeftBtn.setText('fullscreen');
-    });
-    const githubLink = HexagonApp.parseHtml(`
-      <a href="https://github.com/suluke/hexagon">github</a>
-    `);
-    this.topRightBtn = new HexagonTopEdgeButton(githubLink, true);
-    this.topRightBtn.addClass('right');
-    this.topRightBtn.appendTo(this.elm);
-
-    this.startupSound = app.getGame().getSoundManager().addSound('data/sounds/superhexagon.mp3');
-    this.startupSound.play();
-
-    class Level extends HexagonLevel {
-      constructor(game) {
-        super();
-        this.game = game;
-      }
-      reset() {
-        const state = this.game.getState();
-        state.renderConfig.slotColors = [[0.188, 0.188, 0.188], [0.149, 0.149, 0.149]];
-        state.renderConfig.obstacleColor = [0.5, 0.5, 0.5];
-        state.renderConfig.innerHexagonColor = [0.5, 0.5, 0.5];
-        state.renderConfig.outerHexagonColor = [0.5, 0.5, 0.5];
-        state.renderConfig.cursorColor = [0.188, 0.188, 0.188];
-        state.renderConfig.zoom = 5;
-        state.renderConfig.eye = [0, 0.5];
-        state.renderConfig.lookAt = [0, 1];
-        this.tweens = [
-          new HexagonTween(10000, 0, null, (progress) => {
-            state.renderConfig.rotation = 1 - progress;
-          }),
-        ];
-      }
-      tick(delta) {
-        for (let i = 0; i < this.tweens.length; i++)
-          this.tweens[i].tick(delta);
-      }
-    }
-
-    this.level = new Level(app.getGame());
-  }
-  enter() {
-    this.level.reset();
-    this.app.getUIContainer().appendChild(this.elm);
-  }
-  leave() {
-    this.elm.remove();
-  }
-  getLevel() {
-    return this.level;
-  }
-}
-
 class HexagonSettingsScreen extends HexagonScreen {
   constructor(app) {
     super(app);
@@ -410,8 +211,9 @@ class HexagonLevel1 extends HexagonScreen {
   }
 }
 
-class HexagonApp {
+class HexagonApp extends HexagonMessageReceiver {
   constructor(container) {
+    super();
     this.elm = HexagonApp.parseHtml(`
       <div class="hexagon-app">
         <div class="hexagon-ui"></div>
@@ -422,7 +224,9 @@ class HexagonApp {
     this.canvas = this.elm.querySelector('.hexagon-viewport');
     this.uiContainer = this.elm.querySelector('.hexagon-ui');
     this.obstaclePool = new HexagonObstaclePool();
-    this.game = new HexagonGame(this.elm, this.canvas, this.elm, this.obstaclePool);
+    this.messageBus = new HexagonMessageBus();
+    this.messageBus.registerRecipient('app', this);
+    this.game = new HexagonGame(this.elm, this.canvas, this.elm, this.messageBus, this.obstaclePool);
     HexagonPersistence.Create().then((persistence) => {
       this.persistence = persistence;
     });
@@ -491,6 +295,22 @@ class HexagonApp {
   }
   getCurrentScreen() {
     return this.screen;
+  }
+  receiveMessage(msg) {
+    switch(msg.getName()) {
+      case 'forceUserInteraction': {
+        this.screens.title.receiveMessage(msg);
+        if (this.getCurrentScreenName() !== 'title')
+          this.changeScreen('title');
+        break;
+      }
+      case 'userInteractionForced': {
+        this.game.receiveMessage(msg);
+        break;
+      }
+      default:
+        console.warn(`No handler defined for message of type "${msg.getName()}"`);
+    }
   }
   toggleFullscreen(onEnter, onLeave, onError) {
     const element = this.getRootElement();

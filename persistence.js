@@ -121,9 +121,31 @@ class HexagonPersistence {
 
   static async getVersion() {
     const url = window.location.href;
-    if (/^file:\/\//.test(url))
-      return 'dev';
-    else if (/http:\/\/hallobitte.com\//.test(url))
+    if (/^file:\/\//.test(url)) {
+      try {
+        const ref = await new Promise((res, rej) => {
+          const iframe = document.createElement('iframe');
+          // iframe.id = 'iframe';
+          iframe.style.display = 'none';
+          document.body.appendChild(iframe);
+          iframe.onload = function() {
+            let content = null;
+            try {
+              content = iframe.contentDocument.body.firstChild.innerHTML;
+            } catch(e) {
+              rej(e);
+              return;
+            }
+            res(content);
+          };
+          iframe.onerror = function(e) { rej(e); }
+          iframe.src = '.git/refs/heads/master';
+        });
+        return 'dev-' + ref;
+      } catch(e) {
+        return 'dev';
+      }
+    } else if (/http:\/\/hallobitte.com\//.test(url))
       return 'preview';
     else if (/https:\/\/suluke.github.io\//.test(url)) {
       const apiReq = new Request('https://api.github.com/repos/suluke/hexagon/commits/master');
