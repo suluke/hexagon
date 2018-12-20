@@ -98,8 +98,9 @@ class HexagonState {
 class HexagonRenderer {
   constructor(game, canvas) {
     this.game = game;
-    canvas.width = canvas.clientWidth;
-    canvas.height = canvas.clientHeight;
+    const DevicePixelRatio = window.devicePixelRatio || 1.;
+    canvas.width = canvas.clientWidth * DevicePixelRatio;
+    canvas.height = canvas.clientHeight * DevicePixelRatio;
     const gl = canvas.getContext('webgl', { alpha: false, antialias: true, depth: false });
     if (!gl) {
       throw new Error('WebGL not working');
@@ -108,13 +109,13 @@ class HexagonRenderer {
     this.program = this.createProgram();
     this.vertexBuffer = gl.createBuffer();
     window.addEventListener('resize', (event) => {
-      const W  = gl.canvas.clientWidth;
-      const H = gl.canvas.clientHeight;
+      const W  = gl.canvas.clientWidth * DevicePixelRatio;
+      const H = gl.canvas.clientHeight * DevicePixelRatio;
       if (gl.canvas.width  !== W ||
           gl.canvas.height !== H) {
         gl.canvas.width  = W;
         gl.canvas.height = H;
-        gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+        gl.viewport(0, 0, W, H);
       }
     });
     // Caches the parameters that influence the view-projection matrix
